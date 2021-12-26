@@ -16,7 +16,7 @@
 <div>{test}</div>
 
 <SvModal bind:this={modal}>
-  <span slot="header"> header test</span>
+  <!-- <span slot="header"> header test</span> -->
 
   <div>Test</div>
 

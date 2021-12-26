@@ -16,6 +16,7 @@
     await tick();
     hideable = true;
     registerKeyDownEvents();
+    console.log($$slots.header);
   };
 
   const dispatch = createEventDispatcher();
@@ -51,10 +52,14 @@
   }
 
   // TODO:
-  function hasHeader() {}
+  function hasHeader() {
+    return $$slots.header;
+  }
 
   // TODO:
-  function hasFooter() {}
+  function hasFooter() {
+    return $$slots.footer;
+  }
 
   function onkeypress() {
     if (visible) {
@@ -63,58 +68,65 @@
   }
 </script>
 
-<div class="modal-wrapper">
-  {#if visible}
-    <!-- TODO: add class without-header -->
-    <div transition:fade class="modal fade show" tabindex="-1" role="dialog" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered modal-{size}" role="document">
-        <!-- TODO: add click outside -->
+{#if visible}
+  <div class="modal-wrapper" class:active={visible}>
+    <div transition:fade class="modal" tabindex="-1" role="dialog" aria-hidden="true">
+      <div class="modal-{size}" role="document">
         <div class="modal-content {contentClasses}">
-          <div class="modal-header {headerClasses}">
-            <!-- TODO: has header -->
-            <h5 class="modal-title">
-              <slot name="header" />
-            </h5>
-          </div>
-          <div class="modal-body {bodyClasses}">
+
+          {#if hasHeader()}
+            <div class="modal__header {headerClasses}">
+              <h5 class="modal__title">
+                <slot name="header" />
+              </h5>
+            </div>
+          {/if}
+
+          <div class="modal__body {bodyClasses}">
             <slot />
           </div>
-          <!-- TODO: has footer -->
-          <div class="modal-footer {footerClasses}">
-            <slot name="footer" />
-          </div>
+
+          {#if hasFooter()}
+            <div class="modal__footer {footerClasses}">
+              <slot name="footer" />
+            </div>  
+          {/if}
+
         </div>
       </div>
     </div>
-    <div transition:fade class="modal-backdrop fade show" on:click|preventDefault={hide} />
-  {/if}
-</div>
+    <div transition:fade class="modal-backdrop" on:click|preventDefault={hide} />
+  </div>
+{/if}
 
 <style lang="scss" scoped>
-  .modal {
-    overflow-y: auto;
-    &.show {
-      display: block;
-    }
-  }
-  .fade-enter-active {
-    transition: opacity 0.5s;
-  }
-  .fade-leave-active {
-    transition: opacity 0.25s;
-  }
-  .fade-enter, .fade-leave-to /* .fade-leave-active below version 2.1.8 */ {
-    opacity: 0;
-  }
-
-  .modal-backdrop {
+  .modal-wrapper {
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+
+    &.active {
+      display: flex;
+    }
+  }
+
+  .modal-backdrop {
+    position: absolute;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 100%;
     background-color: rgba(#000, 0.7);
     backdrop-filter: blur(3px);
-    z-index: 100;
+  }
+
+  .modal {
+    z-index: 200;
   }
 </style>
