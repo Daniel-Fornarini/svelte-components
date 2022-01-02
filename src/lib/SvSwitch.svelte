@@ -3,12 +3,12 @@
   export let disabled: boolean = false;
 
   import { createEventDispatcher } from 'svelte';
-  import { v4 as uuidv4 } from 'uuid';
 
   const dispatch = createEventDispatcher();
   let checked: boolean = value;
 
-  $: toggleName = `toggle_${uuidv4()}`;
+  // TODO: find a better way
+  $: toggleName = `toggle_${Math.trunc(Math.random() * 10000)}`;
 
   function activate() {
     if (!disabled) {
@@ -40,9 +40,9 @@
 </div>
 
 <style lang="scss">
-  $primary: yellow;
-  $white: white;
-  $text-muted: black;
+  $primary: #6cfc65 !default;
+  $white: white !default;
+  $text-muted: #1a1a1a !default;
 
   .toggle {
     width: 50px;

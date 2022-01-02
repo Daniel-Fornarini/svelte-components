@@ -16,7 +16,13 @@
     await tick();
     hideable = true;
     registerKeyDownEvents();
-    console.log($$slots.header);
+  };
+
+  export const hide = () => {
+    visible = false;
+    hideable = false;
+    dispatch('hidden');
+    unregisterKeyDownEvents();
   };
 
   const dispatch = createEventDispatcher();
@@ -38,25 +44,10 @@
     window.removeEventListener('keydown', eventListener);
   }
 
-  function onOutsideClick() {
-    if (hideable && this.hidesOnClickOut) {
-      hide();
-    }
-  }
-
-  function hide() {
-    visible = false;
-    hideable = false;
-    dispatch('hidden');
-    unregisterKeyDownEvents();
-  }
-
-  // TODO:
   function hasHeader() {
     return $$slots.header;
   }
 
-  // TODO:
   function hasFooter() {
     return $$slots.footer;
   }
@@ -70,36 +61,35 @@
 
 {#if visible}
   <div class="modal-wrapper" class:active={visible}>
-    <div transition:fade class="modal" tabindex="-1" role="dialog" aria-hidden="true">
-      <div class="modal-{size}" role="document">
-        <div class="modal-content {contentClasses}">
-
-          {#if hasHeader()}
-            <div class="modal__header {headerClasses}">
-              <h5 class="modal__title">
-                <slot name="header" />
-              </h5>
-            </div>
-          {/if}
-
-          <div class="modal__body {bodyClasses}">
-            <slot />
-          </div>
-
-          {#if hasFooter()}
-            <div class="modal__footer {footerClasses}">
-              <slot name="footer" />
-            </div>  
-          {/if}
-
+    <div transition:fade class="modal modal-{size}" tabindex="-1" role="dialog" aria-hidden="true">
+      {#if hasHeader()}
+        <div class="modal__header {headerClasses}">
+          <slot name="header" />
         </div>
+      {/if}
+
+      <div class="modal__body {bodyClasses}">
+        <slot />
       </div>
+
+      {#if hasFooter()}
+        <div class="modal__footer {footerClasses}">
+          <slot name="footer" />
+        </div>
+      {/if}
     </div>
-    <div transition:fade class="modal-backdrop" on:click|preventDefault={hide} />
+    <div
+      transition:fade
+      class="modal-backdrop"
+      on:click|preventDefault={hidesOnClickOut ? hide : null}
+    />
   </div>
 {/if}
 
 <style lang="scss" scoped>
+  $bg-color: #eee;
+  $radius: 1rem;
+
   .modal-wrapper {
     display: none;
     position: fixed;
@@ -128,5 +118,13 @@
 
   .modal {
     z-index: 200;
+    width: 40rem;
+    background-color: $bg-color;
+    border-radius: $radius;
+
+    &__body {
+      border-top: 1px solid #bababa;
+      border-bottom: 1px solid #bababa;
+    }
   }
 </style>
