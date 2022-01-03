@@ -1,5 +1,10 @@
 <script context="module" lang="ts">
   export const prerender = true;
+
+  export const datepickerOptions: DatepickerOptions = {
+    
+  }
+
 </script>
 
 <script lang="ts">
@@ -7,6 +12,7 @@
   import SvModal from '$lib/SvModal.svelte';
   import SvIcon from '$lib/SvIcon.svelte';
   import SvCheckbox from '$lib/SvCheckbox.svelte';
+import type { DatepickerOptions } from '$lib/SvDatePickerAirBnb.svelte';
 
   let test: boolean = false;
   let test1: boolean = false;
@@ -38,7 +44,7 @@
 
 <div>{test}</div>
 
-<SvModal bind:this={modal} hidesOnClickOut={false}>
+<SvModal bind:this={modal} hidesOnClickOut={true}>
   <h1 slot="header">Lorem ipsum dolor sit amet.</h1>
 
   <div class="body">
