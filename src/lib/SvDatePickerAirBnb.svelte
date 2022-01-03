@@ -978,14 +978,16 @@
              </button>
            </div>
            <!-- TODO: do this -->
-           <div
-             class="asd__days-legend"
-             v-for="(month, index) in showMonths"
-             :key="month"
-             :style="[monthWidthStyles, {left: (width * index) + 'px'}]"
-           >
-             <div class="asd__day-title" v-for="(day, index) in daysShort" :key="index">{{ day }}</div>
-           </div>
+           {#each showMonths as month,i (month)}
+            <div
+              class="asd__days-legend"
+              style="{[monthWidthStyles, {left: (width * index) + 'px'}]}"
+            >
+              {#each daysShort as days,i (i)}
+                 <div class="asd__day-title">{ day }</div>
+              {/each}
+            </div>
+           {/each}
          </div>
    
          <div class="asd__inner-wrapper" style="{innerStyles}">
