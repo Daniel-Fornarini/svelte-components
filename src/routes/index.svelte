@@ -1,10 +1,5 @@
 <script context="module" lang="ts">
   export const prerender = true;
-
-  export const datepickerOptions: DatepickerOptions = {
-    
-  }
-
 </script>
 
 <script lang="ts">
@@ -12,7 +7,8 @@
   import SvModal from '$lib/SvModal.svelte';
   import SvIcon from '$lib/SvIcon.svelte';
   import SvCheckbox from '$lib/SvCheckbox.svelte';
-import type { DatepickerOptions } from '$lib/SvDatePickerAirBnb.svelte';
+  import SvDatePickerAirBnb from '$lib/SvDatePickerAirBnb.svelte';
+import { format } from 'date-fns';
 
   let test: boolean = false;
   let test1: boolean = false;
@@ -22,9 +18,18 @@ import type { DatepickerOptions } from '$lib/SvDatePickerAirBnb.svelte';
   let modal;
 
   let checkbox: boolean = false;
+
+  let date1 = '';
+  let date2 = '';
 </script>
 
-<SvCheckbox
+<div class="datepicker-trigger">
+  <input type="text" id="datepicker-trigger" placeholder="Select dates" value={`${date1} - ${date2}`}>
+  <SvDatePickerAirBnb on:date-one-selected="{val => date1 = val.detail}" on:date-two-selected={val => date2 = val.detail} triggerElementId="datepicker-trigger"></SvDatePickerAirBnb>
+</div>
+
+
+<!-- <SvCheckbox
   value={checkbox}
   on:input={(e) => {
     checkbox = e.detail.selected;
@@ -36,9 +41,9 @@ import type { DatepickerOptions } from '$lib/SvDatePickerAirBnb.svelte';
 <div style="color: red;">
   <SvIcon>tv</SvIcon>
 </div>
-
-<SSwitch disabled={false} value={test} on:change={() => (test = !test)} />
-<SSwitch disabled={false} value={test1} on:change={() => (test1 = !test1)} />
+ -->
+<!-- <SSwitch disabled={false} value={test} on:change={() => (test = !test)} /> -->
+<!-- <SSwitch disabled={false} value={test1} on:change={() => (test1 = !test1)} />
 <SSwitch disabled={false} value={test2} on:change={() => (test2 = !test2)} />
 <SSwitch disabled={false} value={test3} on:change={() => (test3 = !test3)} />
 
@@ -80,4 +85,4 @@ import type { DatepickerOptions } from '$lib/SvDatePickerAirBnb.svelte';
     text-align: center;
     padding: 1rem;
   }
-</style>
+</style> -->

@@ -41,7 +41,15 @@
     texts?: Texts;
   }
 
-  export const datepickerConfig: DatepickerOptions = {}
+  export interface Month {
+    year: string;
+    firstDateOfMonth: string;
+    monthName: string;
+    monthNumber: number;
+    weeks: any[];
+  }
+
+  export const datepickerConfig: DatepickerOptions = {};
 </script>
 
 <script lang="ts">
@@ -67,15 +75,17 @@
   import isAfter from 'date-fns/isAfter';
   import isValid from 'date-fns/isValid';
   import { debounce, copyObject, findAncestor, randomString } from './../helpers';
-  import vClickOutside from 'v-click-outside';
-  import ResizeSelect from '../directives/ResizeSelect';
+  import { clickOutside } from '../directives/clickOutside';
+  //   import ResizeSelect from '../directives/ResizeSelect';
   import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
+  import { fade } from 'svelte/transition';
+  import { parseISO, toDate } from 'date-fns';
 
-  export let triggerElementId: string = '';
-  export let dateOne: string | Date;
-  export let dateTwo: string | Date;
-  export let minDate: string | Date;
-  export let endDate: string | Date;
+  export let triggerElementId: string;
+  export let dateOne: string | Date = '';
+  export let dateTwo: string | Date = '';
+  export let minDate: string | Date = '';
+  export let endDate: string | Date = '';
   export let mode: string = 'range';
   export let offsetY: number = 0;
   export let offsetX: number = 0;
@@ -102,8 +112,8 @@
   let keyboardShortcusMenuClose: HTMLButtonElement;
 
   let wrapperId: string = 'airbnb-style-datepicker-wrapper-' + randomString(5);
-  let dateFormat: string = 'YYYY-MM-DD';
-  let dateLabelFormat: string = 'dddd, MMMM D, YYYY';
+  let dateFormat: string = 'yyyy-MM-dd';
+  let dateLabelFormat: string = 'dddd, MMMM d, yyyy';
   let showDatepicker: boolean = false;
   let showKeyboardShortcutsMenu: boolean = false;
   let showMonths: number = 2;
@@ -118,11 +128,11 @@
   };
   let sundayFirst: boolean = false;
   let ariaLabels: any = {
-    chooseDate: (date) => date,
-    chooseStartDate: (date) => `Choose ${date} as your start date.`,
-    chooseEndDate: (date) => `Choose ${date} as your end date.`,
-    selectedDate: (date) => `Selected. ${date}`,
-    unavailableDate: (date) => `Not available. ${date}`,
+    chooseDate: (date: string) => date,
+    chooseStartDate: (date: string) => `Choose ${date} as your start date.`,
+    chooseEndDate: (date: string) => `Choose ${date} as your end date.`,
+    selectedDate: (date: string) => `Selected. ${date}`,
+    unavailableDate: (date: string) => `Not available. ${date}`,
     previousMonth: 'Move backward to switch to the previous month.',
     nextMonth: 'Move forward to switch to the next month.',
     closeDatepicker: 'Close calendar',
@@ -197,8 +207,8 @@
     esc: 27
   };
   let startingDate: Date | string = '';
-  let months = [];
-  let years = [];
+  let months: Month[] = [];
+  let years: string[] = [];
   let width: number = 300;
   let selectedDate1: string | Date = '';
   let selectedDate2: string | Date = '';
@@ -211,7 +221,11 @@
   let viewportWidth: string | undefined = undefined;
   let isMobile: boolean | undefined = undefined;
   let isTablet: boolean | undefined = undefined;
-  let triggerElement: HTMLElement | undefined = undefined;
+  let triggerElement!: HTMLElement;
+  let fullDateRefs: Record<string, HTMLElement> = {};
+  let _initialDate1: Date | string;
+  let _initialDate2: Date | string;
+  let windowInnerWidth: number;
 
   $: wrapperClasses = {
     'asd__wrapper--datepicker-open': showDatepicker,
@@ -224,7 +238,7 @@
     left: !alignRight ? triggerPosition.left - triggerWrapperPosition.left + offsetX + 'px' : '',
     right: alignRight ? triggerWrapperPosition.right - triggerPosition.right + offsetX + 'px' : '',
     width: width * showMonths + 'px',
-    zIndex: inline ? '0' : '100'
+    'z-index': inline ? '0' : '100'
   };
   $: innerStyles = {
     'margin-left': showFullscreen ? '-' + viewportWidth : `-${width}px`
@@ -251,45 +265,48 @@
   $: isRangeMode = mode === 'range';
   $: isSingleMode = mode === 'single';
   $: datepickerWidth = width * showMonths;
-  // FIXME: work?
   $: datePropsCompound = (dateOne as string) + (dateTwo as string);
-  $: isDateTwoBeforeDateOne = !dateTwo ? false : isBefore(new Date(dateTwo), new Date(dateOne));
-  // FIXME: reactive?
-  $: visibleMonths = () => {
-    const firstMonthArray = months.filter((m, index) => index > 0);
+  $: isDateTwoBeforeDateOne = !dateTwo
+    ? false
+    : isBefore(normalizeDate(dateTwo), normalizeDate(dateOne));
+  $: visibleMonths = getVisibleMonths(months, showMonths);
+  function getVisibleMonths(monthsAtr: any[], showMonthsAtr: number) {
+    const firstMonthArray = monthsAtr.filter((m, index) => index > 0);
     const numberOfMonthsArray = [];
-    for (let i = 0; i < showMonths; i++) {
+    for (let i = 0; i < showMonthsAtr; i++) {
       numberOfMonthsArray.push(i);
     }
-    return numberOfMonthsArray.map((_, index) => firstMonthArray[index].firstDateOfMonth);
-  };
+    return numberOfMonthsArray.map((_, index) =>
+      normalizeDate(firstMonthArray[index]?.firstDateOfMonth)
+    );
+  }
 
   $: onSelectedDate1Change(selectedDate1);
-  function onSelectedDate1Change(newValue) {
-    let newDate = !newValue || newValue === '' ? '' : format(newValue, dateFormat);
+  function onSelectedDate1Change(newValue: Date | string) {
+    let newDate = !newValue || newValue === '' ? '' : format(normalizeDate(newValue), dateFormat);
     dispatch('date-one-selected', newDate);
   }
   $: onSelectedDate2Change(selectedDate2);
-  function onSelectedDate2Change(newValue) {
-    let newDate = !newValue || newValue === '' ? '' : format(newValue, dateFormat);
+  function onSelectedDate2Change(newValue: Date | string) {
+    let newDate = !newValue || newValue === '' ? '' : format(normalizeDate(newValue), dateFormat);
     dispatch('date-two-selected', newDate);
   }
   $: onModeChange(mode);
-  function onModeChange(newValue) {
+  function onModeChange(newValue: string) {
     setStartDates();
   }
   $: onMinDateChange(minDate);
-  function onMinDateChange(newValue) {
+  function onMinDateChange(newValue: Date | string) {
     setStartDates();
     generateMonths();
     generateYears();
   }
   $: onEndDateChange(endDate);
-  function onEndDateChange(newValue) {
+  function onEndDateChange(newValue: Date | string) {
     generateYears();
   }
   $: onDatePropsCompoundChange(datePropsCompound);
-  function onDatePropsCompoundChange(newValue) {
+  function onDatePropsCompoundChange(newValue: string) {
     if (dateOne !== selectedDate1) {
       startingDate = dateOne;
       setStartDates();
@@ -302,11 +319,30 @@
     }
   }
   $: onTriggerChange(trigger);
-  function onTriggerChange(newValue) {
+  function onTriggerChange(newValue: boolean) {
     if (newValue) {
       setTimeout(() => {
         openDatepicker();
       }, 0);
+    }
+  }
+
+  function handleWindowResizeEvent(
+    event: UIEvent & {
+      currentTarget: EventTarget & Window;
+    }
+  ) {
+    debounce(() => {
+      positionDatepicker();
+      setStartDates();
+    }, 200);
+  }
+
+  function handleWindowClickEvent(event: MouseEvent) {
+    if ((event.target as HTMLElement)?.id === triggerElementId) {
+      event.stopPropagation();
+      event.preventDefault();
+      toggleDatepicker();
     }
   }
 
@@ -315,24 +351,12 @@
     if (sundayFirst) {
       setSundayToFirstDayInWeek();
     }
-    viewportWidth = window.innerWidth + 'px';
-    isMobile = window.innerWidth < 768;
-    isTablet = window.innerWidth >= 768 && window.innerWidth <= 1024;
-    this._handleWindowResizeEvent = debounce(() => {
-      positionDatepicker();
-      setStartDates();
-    }, 200);
-    this._handleWindowClickEvent = (event) => {
-      if (event.target.id === triggerElementId) {
-        event.stopPropagation();
-        event.preventDefault();
-        toggleDatepicker();
-      }
-    };
-    window.addEventListener('resize', this._handleWindowResizeEvent);
+    viewportWidth = windowInnerWidth + 'px';
+    isMobile = windowInnerWidth < 768;
+    isTablet = windowInnerWidth >= 768 && windowInnerWidth <= 1024;
     triggerElement = isTest
       ? document.createElement('input')
-      : document.getElementById(triggerElementId);
+      : document.getElementById(triggerElementId)!;
     setStartDates();
     generateMonths();
     generateYears();
@@ -342,16 +366,16 @@
     el.addEventListener('keyup', handleKeyboardInput);
     el.addEventListener('keydown', trapKeyboardInput);
     triggerElement.addEventListener('keyup', handleTriggerInput);
-    triggerElement.addEventListener('click', this._handleWindowClickEvent);
+    triggerElement.addEventListener('click', handleWindowClickEvent);
   });
 
   onDestroy(() => {
-    window.removeEventListener('resize', this._handleWindowResizeEvent);
-    window.removeEventListener('click', this._handleWindowClickEvent);
-    el.removeEventListener('keyup', handleKeyboardInput);
-    el.removeEventListener('keydown', trapKeyboardInput);
-    triggerElement.removeEventListener('keyup', handleTriggerInput);
-    triggerElement.removeEventListener('click', this._handleWindowClickEvent);
+    // window.removeEventListener('resize', this._handleWindowResizeEvent);
+    // window.removeEventListener('click', this._handleWindowClickEvent);
+    // el.removeEventListener('keyup', handleKeyboardInput);
+    // el.removeEventListener('keydown', trapKeyboardInput);
+    // triggerElement.removeEventListener('keyup', handleTriggerInput);
+    // triggerElement.removeEventListener('click', this._handleWindowClickEvent);
   });
 
   function getDayStyles(date: Date) {
@@ -385,7 +409,8 @@
     return styles;
   }
 
-  function getAriaLabelForDate(date: Date) {
+  function getAriaLabelForDate(date: Date | string) {
+    date = normalizeDate(date);
     const dateLabel = format(date, dateLabelFormat);
     const disabled = isDisabled(date);
     if (disabled) {
@@ -406,33 +431,33 @@
     }
   }
 
-  function handleClickOutside(event) {
-    if (event.target.id === triggerElementId || !showDatepicker || inline) {
+  function handleClickOutside(event: CustomEvent<any>) {
+    if ((event.target as HTMLElement)?.id === triggerElementId || !showDatepicker || inline) {
       return;
     }
     closeDatepicker();
   }
 
-  function shouldHandleInput(event, key) {
+  function shouldHandleInput(event: KeyboardEvent, key: number) {
     return event.keyCode === key && (!event.shiftKey || event.keyCode === 191) && showDatepicker;
   }
 
-  function handleTriggerInput(event) {
+  function handleTriggerInput(event: KeyboardEvent) {
     if (mode === 'single') {
-      setDateFromText(event.target.value);
+      setDateFromText((event.target as HTMLInputElement)?.value);
     }
   }
 
-  function trapKeyboardInput(event) {
+  function trapKeyboardInput(event: KeyboardEvent) {
     // prevent keys that are used as keyboard shortcuts from propagating out of this element
     // except for the enter key, which is needed to activate buttons
-    const shortcutKeyCodes = Object.keys(keys).map((key) => keys[key]);
+    const shortcutKeyCodes = Object.keys(keys).map((key) => (keys as any)[key]);
     shortcutKeyCodes.splice(shortcutKeyCodes.indexOf(13), 1);
     const shouldPreventDefault = shortcutKeyCodes.indexOf(event.keyCode) > -1;
     if (shouldPreventDefault) event.preventDefault();
   }
 
-  function handleKeyboardInput(event) {
+  function handleKeyboardInput(event: KeyboardEvent) {
     if (shouldHandleInput(event, keys.esc)) {
       if (showKeyboardShortcutsMenu) {
         closeKeyboardShortcutsMenu();
@@ -442,49 +467,49 @@
     } else if (showKeyboardShortcutsMenu) {
       // if keyboard shortcutsMenu is open, then esc is the only key we want to have fire events
     } else if (shouldHandleInput(event, keys.arrowDown)) {
-      const newDate = addWeeks(new Date(focusedDate), 1);
-      const changeMonths = !isSameMonth(newDate, new Date(focusedDate));
+      const newDate = addWeeks(normalizeDate(focusedDate), 1);
+      const changeMonths = !isSameMonth(newDate, normalizeDate(focusedDate));
       setFocusedDate(newDate);
       if (changeMonths) nextMonth();
     } else if (shouldHandleInput(event, keys.arrowUp)) {
-      const newDate = subWeeks(new Date(focusedDate), 1);
-      const changeMonths = !isSameMonth(newDate, new Date(focusedDate));
+      const newDate = subWeeks(normalizeDate(focusedDate), 1);
+      const changeMonths = !isSameMonth(newDate, normalizeDate(focusedDate));
       setFocusedDate(newDate);
       if (changeMonths) previousMonth();
     } else if (shouldHandleInput(event, keys.arrowRight)) {
-      const newDate = addDays(new Date(focusedDate), 1);
-      const changeMonths = !isSameMonth(newDate, new Date(focusedDate));
+      const newDate = addDays(normalizeDate(focusedDate), 1);
+      const changeMonths = !isSameMonth(newDate, normalizeDate(focusedDate));
       setFocusedDate(newDate);
       if (changeMonths) nextMonth();
     } else if (shouldHandleInput(event, keys.arrowLeft)) {
-      const newDate = subDays(new Date(focusedDate), 1);
-      const changeMonths = !isSameMonth(newDate, new Date(focusedDate));
+      const newDate = subDays(normalizeDate(focusedDate), 1);
+      const changeMonths = !isSameMonth(newDate, normalizeDate(focusedDate));
       setFocusedDate(newDate);
       if (changeMonths) previousMonth();
     } else if (shouldHandleInput(event, keys.enter)) {
       // on enter key, only select the date if a date is currently in focus
-      const target = event.target;
+      const target: HTMLElement | null = event.target as HTMLElement;
       if (!showKeyboardShortcutsMenu && target && target.tagName === 'TD') {
         selectDate(focusedDate);
       }
     } else if (shouldHandleInput(event, keys.pgUp)) {
-      setFocusedDate(subMonths(new Date(focusedDate), 1));
+      setFocusedDate(subMonths(normalizeDate(focusedDate), 1));
       previousMonth();
     } else if (shouldHandleInput(event, keys.pgDn)) {
-      setFocusedDate(addMonths(new Date(focusedDate), 1));
+      setFocusedDate(addMonths(normalizeDate(focusedDate), 1));
       nextMonth();
     } else if (shouldHandleInput(event, keys.home)) {
-      const newDate = startOfWeek(new Date(focusedDate), {
+      const newDate = startOfWeek(normalizeDate(focusedDate), {
         weekStartsOn: sundayFirst ? 0 : 1
       });
-      const changeMonths = !isSameMonth(newDate, new Date(focusedDate));
+      const changeMonths = !isSameMonth(newDate, normalizeDate(focusedDate));
       setFocusedDate(newDate);
       if (changeMonths) previousMonth();
     } else if (shouldHandleInput(event, keys.end)) {
-      const newDate = endOfWeek(new Date(focusedDate), {
+      const newDate = endOfWeek(normalizeDate(focusedDate), {
         weekStartsOn: sundayFirst ? 0 : 1
       });
-      const changeMonths = !isSameMonth(newDate, new Date(focusedDate));
+      const changeMonths = !isSameMonth(newDate, normalizeDate(focusedDate));
       setFocusedDate(newDate);
       if (changeMonths) nextMonth();
     } else if (shouldHandleInput(event, keys.questionMark)) {
@@ -492,7 +517,7 @@
     }
   }
 
-  function setDateFromText(value) {
+  function setDateFromText(value: string) {
     if (!value || value.length < 10) {
       return;
     }
@@ -510,6 +535,7 @@
       //convert to YYYY-MM-DD
       value = `${value.substring(6, 10)}-${value.substring(3, 5)}-${value.substring(0, 2)}`;
     }
+    // Date
     const valueAsDateObject = new Date(value);
     if (!isValid(valueAsDateObject)) {
       return;
@@ -522,15 +548,16 @@
     ) {
       return;
     }
-    startingDate = subMonths(valueAsDateObject, 1);
+    startingDate = subMonths(normalizeDate(formattedDate), 1);
     generateMonths();
     generateYears();
     selectDate(formattedDate);
   }
 
-  function isMonthDisabled(year, monthIndex) {
+  function isMonthDisabled(year: number, monthIndex: number) {
+    // Date
     const monthDate = new Date(year, monthIndex);
-    if (hasMinDate && isBefore(monthDate, startOfMonth(new Date(minDate)))) {
+    if (hasMinDate && isBefore(monthDate, startOfMonth(normalizeDate(minDate)))) {
       return true;
     }
     return isAfterEndDate(monthDate);
@@ -540,7 +567,7 @@
     months = [];
     let currentMonth = startingDate;
     for (let i = 0; i < showMonths + 2; i++) {
-      months.push(getMonthObject(new Date(currentMonth)));
+      months.push(getMonthObject(normalizeDate(currentMonth)));
       currentMonth = addMonthsFormatted(currentMonth);
     }
   }
@@ -548,9 +575,9 @@
   function generateYears() {
     if (!showMonthYearSelect) return;
     years = [];
-    const currentYear = getYear(new Date(startingDate));
-    const startYear = minDate ? getYear(new Date(minDate)) : currentYear - yearsForSelect;
-    const endYear = endDate ? getYear(new Date(endDate)) : currentYear + yearsForSelect;
+    const currentYear = getYear(normalizeDate(startingDate));
+    const startYear = minDate ? getYear(normalizeDate(minDate)) : currentYear - yearsForSelect;
+    const endYear = endDate ? getYear(normalizeDate(endDate)) : currentYear + yearsForSelect;
     for (var year = startYear; year <= endYear; year++) {
       years.push(year.toString());
     }
@@ -596,26 +623,27 @@
   }
 
   function setStartDates() {
+    // Date
     let startDate = dateOne || new Date();
-    if (hasMinDate && isBefore(new Date(startDate), new Date(minDate))) {
+    if (hasMinDate && isBefore(normalizeDate(startDate), normalizeDate(minDate))) {
       startDate = minDate;
     }
     startingDate = subtractMonths(startDate);
     selectedDate1 = dateOne;
     selectedDate2 = dateTwo;
-    focusedDate = new Date(startDate);
+    focusedDate = normalizeDate(startDate);
   }
 
   function setSundayToFirstDayInWeek() {
-    const lastDay = days.pop();
+    const lastDay = days.pop()!;
     days.unshift(lastDay);
-    const lastDayShort = daysShort.pop();
+    const lastDayShort = daysShort.pop()!;
     daysShort.unshift(lastDayShort);
   }
 
   function getMonthObject(date: Date) {
-    const firstDateOfMonth = format(date, 'YYYY-MM-01');
-    const year = format(date, 'YYYY');
+    const firstDateOfMonth = format(date, 'yyyy-MM-01');
+    const year = format(date, 'yyyy');
     const monthNumber = parseInt(format(date, 'M'));
     const monthName = monthNames[monthNumber - 1];
     return {
@@ -623,19 +651,17 @@
       firstDateOfMonth,
       monthName,
       monthNumber,
-      weeks: getWeeks(new Date(firstDateOfMonth))
+      weeks: getWeeks(normalizeDate(firstDateOfMonth))
     };
   }
 
   function getWeeks(date: Date) {
+    console.log(date);
     const weekDayNotInMonth = { dayNumber: 0 };
     const daysInMonth = getDaysInMonth(date);
-    const year = format(date, 'YYYY');
+    const year = format(date, 'yyyy');
     const month = format(date, 'MM');
-    let firstDayInWeek = parseInt(format(date, sundayFirst ? 'd' : 'E'));
-    if (sundayFirst) {
-      firstDayInWeek++;
-    }
+    let firstDayInWeek = parseInt(format(date, 'i'));
     let weeks = [];
     let week = [];
     // add empty days to get first day in correct position
@@ -665,7 +691,8 @@
     return weeks;
   }
 
-  function selectDate(date) {
+  function selectDate(date: Date | string) {
+    date = normalizeDate(date);
     if (isBeforeMinDate(date) || isAfterEndDate(date) || isDateDisabled(date)) {
       return;
     }
@@ -674,16 +701,16 @@
       closeDatepicker();
       return;
     }
-    if (isSelectingDate1 || isBefore(date, new Date(selectedDate1))) {
+    if (isSelectingDate1 || isBefore(date, normalizeDate(selectedDate1))) {
       selectedDate1 = date;
       isSelectingDate1 = false;
-      if (isBefore(new Date(selectedDate2), date)) {
+      if (isBefore(normalizeDate(selectedDate2), date)) {
         selectedDate2 = '';
       }
     } else {
       selectedDate2 = date;
       isSelectingDate1 = true;
-      if (isAfter(new Date(selectedDate1), date)) {
+      if (isAfter(normalizeDate(selectedDate1), date)) {
         selectedDate1 = '';
       } else if (showActionButtons) {
         // if user has selected both dates, focus the apply button for accessibility
@@ -702,12 +729,11 @@
   function setFocusedDate(date: Date) {
     const formattedDate = format(date, dateFormat);
     focusedDate = formattedDate;
-    // TODO: ref
-    const dateElement = $refs[`date-${formattedDate}`];
+    const dateElement = fullDateRefs[`date-${formattedDate}`];
     // handle .focus() on ie11 by adding a short timeout
-    if (dateElement && dateElement.length) {
+    if (dateElement) {
       setTimeout(function () {
-        dateElement[0].focus();
+        dateElement.focus();
       }, 10);
     }
   }
@@ -718,70 +744,90 @@
       const targetMonth = visibleMonths[visibleMonthIdx];
       const monthIdx = getMonth(targetMonth);
       const year = getYear(targetMonth);
-      const newFocusedDate = setYear(setMonth(new Date(focusedDate), monthIdx), year);
+      const newFocusedDate = setYear(setMonth(normalizeDate(focusedDate), monthIdx), year);
       focusedDate = format(newFocusedDate, dateFormat);
     }
   }
 
-  function isToday(date) {
+  function isToday(date: string) {
+    // Date
     return format(new Date(), dateFormat) === date;
   }
 
-  function isSameDate(date1, date2) {
+  function isSameDate(date1: Date | string, date2: Date | string) {
+    date1 = normalizeDate(date1);
+    date2 = normalizeDate(date2);
     return isSameDay(date1, date2);
   }
 
-  function isSelected(date) {
+  function isSelected(date: Date | string) {
+    date = normalizeDate(date);
     if (!date) {
       return;
     }
-    return selectedDate1 === date || selectedDate2 === date;
+    const s1 = normalizeDate(selectedDate1);
+    const s2 = normalizeDate(selectedDate2);
+    return isSameDate(s1, date) || isSameDate(s2, date);
   }
 
-  function isInRange(date) {
+  function isInRange(date: Date | string) {
+    date = normalizeDate(date);
     if (!allDatesSelected || isSingleMode) {
       return false;
     }
     return (
-      (isAfter(date, new Date(selectedDate1)) && isBefore(date, new Date(selectedDate2))) ||
-      (isAfter(date, new Date(selectedDate1)) && isBefore(date, new Date(hoverDate)) && !allDatesSelected)
+      (isAfter(date, normalizeDate(selectedDate1)) &&
+        isBefore(date, normalizeDate(selectedDate2))) ||
+      (isAfter(date, normalizeDate(selectedDate1)) &&
+        isBefore(date, normalizeDate(hoverDate)) &&
+        !allDatesSelected)
     );
   }
 
-  function isHoveredInRange(date) {
+  function isHoveredInRange(date: Date | string) {
+    date = normalizeDate(date);
     if (isSingleMode || allDatesSelected) {
       return false;
     }
     return (
-      (isAfter(date, new Date(selectedDate1)) && isBefore(date, new Date(hoverDate))) ||
-      (isAfter(date, new Date(hoverDate)) && isBefore(date, new Date(selectedDate1)))
+      (isAfter(date, normalizeDate(selectedDate1)) && isBefore(date, normalizeDate(hoverDate))) ||
+      (isAfter(date, normalizeDate(hoverDate)) && isBefore(date, normalizeDate(selectedDate1)))
     );
   }
 
-  function isBeforeMinDate(date) {
+  function isBeforeMinDate(date: Date | string) {
+    date = normalizeDate(date);
     if (!minDate) {
       return false;
     }
-    return isBefore(date, new Date(minDate));
+    return isBefore(date, normalizeDate(minDate));
   }
 
-  function isAfterEndDate(date) {
+  function isAfterEndDate(date: Date | string) {
+    date = normalizeDate(date);
     if (!endDate) {
       return false;
     }
-    return isAfter(date, new Date(endDate));
+    return isAfter(date, normalizeDate(endDate));
   }
 
-  function isDateVisible(date) {
+  function isDateVisible(date: Date | string) {
+    date = normalizeDate(date);
     if (!date) {
       return false;
     }
     const start = subDays(visibleMonths[0], 1);
     const end = addDays(lastDayOfMonth(visibleMonths[monthsToShow - 1]), 1);
+    // console.group('date')
+    // console.log(date);
+    // console.log(start);
+    // console.log(end);
+    // console.groupEnd()
     return isAfter(date, start) && isBefore(date, end);
   }
 
-  function isDateDisabled(date) {
+  function isDateDisabled(date: Date | string) {
+    date = normalizeDate(date);
     if (enabledDates.length > 0) {
       return enabledDates.indexOf(date) === -1;
     } else {
@@ -789,7 +835,7 @@
     }
   }
 
-  function customizedDateClass(date) {
+  function customizedDateClass(date: Date | string) {
     let customizedClasses = '';
     if (customizedDates.length > 0) {
       for (var i = 0; i < customizedDates.length; i++) {
@@ -800,32 +846,38 @@
     return customizedClasses;
   }
 
-  function isDisabled(date) {
+  function isDisabled(date: Date | string) {
+    date = normalizeDate(date);
     return isDateDisabled(date) || isBeforeMinDate(date) || isAfterEndDate(date);
   }
 
   function previousMonth() {
     startingDate = subtractMonths(months[0].firstDateOfMonth);
-    months.unshift(getMonthObject(new Date(startingDate)));
+    months.unshift(getMonthObject(normalizeDate(startingDate)));
     months.splice(months.length - 1, 1);
     dispatch('previous-month', visibleMonths);
     resetFocusedDate(false);
   }
 
   function nextMonth() {
+    console.log(JSON.stringify(visibleMonths));
+    console.log(months);
     startingDate = addMonthsFormatted(months[months.length - 1].firstDateOfMonth);
-    months.push(getMonthObject(new Date(startingDate)));
+    months.push(getMonthObject(normalizeDate(startingDate)));
     months.splice(0, 1);
     dispatch('next-month', visibleMonths);
     resetFocusedDate(true);
+    console.log(JSON.stringify(visibleMonths));
+    console.log(months);
   }
 
-  function subtractMonths(date) {
+  function subtractMonths(date: Date | string) {
+    date = normalizeDate(date);
     return format(subMonths(date, 1), dateFormat);
   }
 
-  function addMonthsFormatted(date) {
-    return format(addMonths(date, 1), dateFormat);
+  function addMonthsFormatted(date: Date | string) {
+    return format(addMonths(normalizeDate(date), 1), dateFormat);
   }
 
   function toggleDatepicker() {
@@ -836,17 +888,17 @@
     }
   }
 
-  function updateMonth(offset, year, event) {
-    const newMonth = event.target.value;
+  function updateMonth(offset: number, year: string, event: Event) {
+    const newMonth = (event.target as HTMLSelectElement)?.value;
     const monthIdx = monthNames.indexOf(newMonth);
-    const newDate = setYear(setMonth(new Date(startingDate), monthIdx), year);
+    const newDate = setYear(setMonth(normalizeDate(startingDate), monthIdx), +year);
     startingDate = subMonths(newDate, offset);
     generateMonths();
   }
 
-  function updateYear(offset, monthIdx: number, event) {
-    const newYear = event.target.value;
-    const newDate = setYear(setMonth(new Date(startingDate), monthIdx), newYear);
+  function updateYear(offset: number, monthIdx: number, event: Event) {
+    const newYear = (event.target as HTMLSelectElement)?.value;
+    const newDate = setYear(setMonth(normalizeDate(startingDate), monthIdx), +newYear);
     startingDate = subMonths(newDate, offset);
     generateMonths();
   }
@@ -854,21 +906,21 @@
   async function openDatepicker() {
     positionDatepicker();
     setStartDates();
-    triggerElement.classList.add('datepicker-open');
+    triggerElement!.classList.add('datepicker-open');
     showDatepicker = true;
-    this._initialDate1 = dateOne;
-    this._initialDate2 = dateTwo;
+    _initialDate1 = dateOne;
+    _initialDate2 = dateTwo;
     dispatch('opened');
     await tick();
     if (!inline) {
-      setFocusedDate(new Date(focusedDate));
+      setFocusedDate(normalizeDate(focusedDate));
     }
   }
 
   function closeDatepickerCancel() {
     if (showDatepicker) {
-      selectedDate1 = this._initialDate1;
-      selectedDate2 = this._initialDate2;
+      selectedDate1 = _initialDate1;
+      selectedDate2 = _initialDate2;
       dispatch('cancelled');
       closeDatepicker();
     }
@@ -880,7 +932,7 @@
     }
     showDatepicker = false;
     showKeyboardShortcutsMenu = false;
-    triggerElement.classList.remove('datepicker-open');
+    triggerElement!.classList.remove('datepicker-open');
     dispatch('closed');
   }
 
@@ -894,7 +946,7 @@
   async function closeKeyboardShortcutsMenu() {
     showKeyboardShortcutsMenu = false;
     await tick();
-    setFocusedDate(new Date(focusedDate));
+    setFocusedDate(normalizeDate(focusedDate));
   }
 
   function apply() {
@@ -910,7 +962,7 @@
     } else {
       triggerWrapperPosition = { left: 0, right: 0 };
     }
-    const viewportWidthNumber = document.documentElement.clientWidth || window.innerWidth;
+    const viewportWidthNumber = document.documentElement.clientWidth || windowInnerWidth;
     viewportWidth = viewportWidthNumber + 'px';
     isMobile = viewportWidthNumber < 768;
     isTablet = viewportWidthNumber >= 768 && viewportWidthNumber <= 1024;
@@ -920,211 +972,575 @@
     if (!triggerElement || !datepickerWrapper) {
       return;
     }
-    const rightPosition = triggerElement.getBoundingClientRect().left + datepickerWrapper.getBoundingClientRect().width;
+    const rightPosition =
+      triggerElement.getBoundingClientRect().left + datepickerWrapper.getBoundingClientRect().width;
     alignRight = rightPosition > viewportWidthNumber;
+  }
+
+  function asdListComplete(node: HTMLElement, params: any) {
+    return {
+      delay: params.delay || 0,
+      duration: params.duration || 400,
+      css: (t: number, u: number) => `transform: translateY(${t * 30}px)`
+    };
+  }
+
+  function stylesToString(styles: any) {
+    const arrayStyles = Object.entries(styles);
+    const stringStyles = [];
+    for (const style of arrayStyles) {
+      stringStyles.push(`${style[0]}: ${style[1]};`);
+    }
+    return stringStyles.join(' ');
+  }
+
+  function classesToString(classes: any) {
+    const arrayClasses = Object.entries(classes);
+    const stringClasses = [];
+    for (const c of arrayClasses) {
+      if (!!c[1] === true) {
+        stringClasses.push(c[0]);
+      }
+    }
+    return stringClasses.join(' ');
+  }
+
+  function numberToArray(number: number) {
+    const numbers = [];
+    for (let i = 0; i < number; i++) {
+      numbers.push(i + 1);
+    }
+    return numbers;
+  }
+
+  function normalizeDate(date: string | Date): Date {
+    if (typeof date === 'string') {
+      return parseISO(date);
+    }
+    return date;
   }
 </script>
 
-<transition name="asd__fade">
-    <div
-      id="{wrapperId}"
-      class="asd__wrapper"
-      v-show="showDatepicker"
-      class="{wrapperClasses}"
-      style="{showFullscreen ? null : wrapperStyles}"
-      v-click-outside="handleClickOutside"
-    >
-    {#if showFullscreen}
-        <div class="asd__mobile-header asd__mobile-only">
-           <button
-             type="button"
-             class="asd__mobile-close"
-             on:click="{closeDatepicker}"
-             aria-label="{ariaLabels.closeDatepicker}"
-           >
-                {#if $$slots['close-icon']}
-                    <slot name="close-icon"></slot>
-                {:else}
-                    <div class="asd__mobile-close-icon" aria-hidden="true">X</div>
+<!-- TODO: v-show -->
+
+<svelte:window
+  bind:innerWidth={windowInnerWidth}
+  on:resize={(event) => handleWindowResizeEvent(event)}
+/>
+
+<div
+  id={wrapperId}
+  class="asd__wrapper {classesToString(wrapperClasses)}"
+  class:hidden={!showDatepicker}
+  style={showFullscreen ? null : stylesToString(wrapperStyles)}
+  bind:this={el}
+  on:keyup={handleKeyboardInput}
+  on:keydown={trapKeyboardInput}
+  transition:fade
+  use:clickOutside
+  on:click_outside={handleClickOutside}
+>
+  {#if showFullscreen}
+    <div class="asd__mobile-header asd__mobile-only">
+      <button
+        type="button"
+        class="asd__mobile-close"
+        on:click={closeDatepicker}
+        aria-label={ariaLabels.closeDatepicker}
+      >
+        {#if $$slots['close-icon']}
+          <slot name="close-icon" />
+        {:else}
+          <div class="asd__mobile-close-icon" aria-hidden="true">X</div>
+        {/if}
+      </button>
+      <h3>{mobileHeader || mobileHeaderFallback}</h3>
+    </div>
+  {/if}
+  <div class="asd__datepicker-header">
+    <div class="asd__change-month-button asd__change-month-button--previous">
+      <button on:click={previousMonth} type="button" aria-label={ariaLabels.previousMonth}>
+        {#if $$slots['previous-month-icon']}
+          <slot name="previous-month-icon" />
+        {:else}
+          <svg viewBox="0 0 1000 1000">
+            <path
+              d="M336.2 274.5l-210.1 210h805.4c13 0 23 10 23 23s-10 23-23 23H126.1l210.1 210.1c11 11 11 21 0 32-5 5-10 7-16 7s-11-2-16-7l-249.1-249c-11-11-11-21 0-32l249.1-249.1c21-21.1 53 10.9 32 32z"
+            />
+          </svg>
+        {/if}
+      </button>
+    </div>
+    <div class="asd__change-month-button asd__change-month-button--next">
+      <button on:click={nextMonth} type="button" aria-label={ariaLabels.nextMonth}>
+        {#if $$slots['next-month-icon']}
+          <slot name="next-month-icon" />
+        {:else}
+          <svg viewBox="0 0 1000 1000">
+            <path
+              d="M694.4 242.4l249.1 249.1c11 11 11 21 0 32L694.4 772.7c-5 5-10 7-16 7s-11-2-16-7c-11-11-11-21 0-32l210.1-210.1H67.1c-13 0-23-10-23-23s10-23 23-23h805.4L662.4 274.5c-21-21.1 11-53.1 32-32.1z"
+            />
+          </svg>
+        {/if}
+      </button>
+    </div>
+    {#each numberToArray(showMonths) as month, i (month)}
+      <div
+        class="asd__days-legend"
+        style="{stylesToString(monthWidthStyles)} {`left: ${width * i}px`}"
+      >
+        {#each daysShort as day, i (i)}
+          <div class="asd__day-title">{day}</div>
+        {/each}
+      </div>
+    {/each}
+  </div>
+  <div class="asd__inner-wrapper" style={stylesToString(innerStyles)}>
+    <div transition:asdListComplete>
+      {#each months as month, monthIndex (month.firstDateOfMonth)}
+        <!-- content here -->
+        <div
+          class="asd__month {monthIndex === 0 || monthIndex > showMonths
+            ? 'asd__month--hidden'
+            : ''}"
+          style={stylesToString(monthWidthStyles)}
+        >
+          <div class="asd__month-name">
+            {#if showMonthYearSelect}
+              <!-- TODO: v-resize-select -->
+              <select
+                bind:value={month.monthName}
+                class="asd__month-year-select"
+                tabindex={monthIndex === 0 || monthIndex > showMonths ? -1 : 0}
+                on:change={(event) => updateMonth(monthIndex, month.year, event)}
+              >
+                {#each monthNames as monthName, idx (`month-${monthIndex}-${monthName}`)}
+                  <!-- content here -->
+                  <option value={monthName} disabled={isMonthDisabled(+month.year, idx)}
+                    >{monthName}</option
+                  >
+                {/each}
+              </select>
+            {:else}
+              <span>{month.monthName}</span>
+            {/if}
+            {#if showMonthYearSelect}
+              <select
+                class="asd__month-year-select"
+                tabindex={monthIndex === 0 || monthIndex > showMonths ? -1 : 0}
+                bind:value={month.year}
+                on:change={(event) => updateYear(monthIndex, month.monthNumber - 1, event)}
+              >
+                {#if years.indexOf(month.year) === -1}
+                  <!-- TODO: :key="`month-${monthIndex}-${year}`" -->
+                  <option value={month.year} disabled={true}>{month.year}</option>
                 {/if}
-           </button>
-           <h3>{ mobileHeader || mobileHeaderFallback }</h3>
-         </div>
-         <div class="asd__datepicker-header">
-           <div class="asd__change-month-button asd__change-month-button--previous">
-                <button on:click="{previousMonth}" type="button" aria-label="{ariaLabels.previousMonth}">
-                    {#if $$slots['previous-month-icon']}
-                        <slot name="previous-month-icon"></slot>
-                    {:else}
-                        <svg viewBox="0 0 1000 1000">
-                        <path
-                            d="M336.2 274.5l-210.1 210h805.4c13 0 23 10 23 23s-10 23-23 23H126.1l210.1 210.1c11 11 11 21 0 32-5 5-10 7-16 7s-11-2-16-7l-249.1-249c-11-11-11-21 0-32l249.1-249.1c21-21.1 53 10.9 32 32z"
-                        ></path>
-                        </svg>
-                    {/if}
-                </button>
-           </div>
-           <div class="asd__change-month-button asd__change-month-button--next">
-             <button on:click="{nextMonth}" type="button" aria-label="{ariaLabels.nextMonth}">
-                {#if $$slots['next-month-icon']}
-                    <slot  name="next-month-icon"></slot>
-                {:else}
-                     <svg viewBox="0 0 1000 1000">
-                       <path
-                         d="M694.4 242.4l249.1 249.1c11 11 11 21 0 32L694.4 772.7c-5 5-10 7-16 7s-11-2-16-7c-11-11-11-21 0-32l210.1-210.1H67.1c-13 0-23-10-23-23s10-23 23-23h805.4L662.4 274.5c-21-21.1 11-53.1 32-32.1z"
-                       ></path>
-                     </svg>
-                {/if}
-             </button>
-           </div>
-           <!-- TODO: do this -->
-           {#each showMonths as month,i (month)}
-            <div
-              class="asd__days-legend"
-              style="{[monthWidthStyles, {left: (width * index) + 'px'}]}"
-            >
-              {#each daysShort as days,i (i)}
-                 <div class="asd__day-title">{ day }</div>
+                {#each years as year (`month-${monthIndex}-${year}`)}
+                  <option value={year}>{year}</option>
+                {/each}
+              </select>
+            {:else}
+              <span>{month.year}</span>
+            {/if}
+          </div>
+          <table class="asd__month-table" role="presentation">
+            <tbody>
+              {#each month.weeks as week, index (index)}
+                <tr class="asd__week">
+                  {#each week as { fullDate, dayNumber }, index (`${index}_${dayNumber}`)}
+                    <td
+                      class="asd__day {classesToString(customizedDateClass(fullDate))}"
+                      data-date={fullDate}
+                      bind:this={fullDateRefs[`date-${fullDate}`]}
+                      tabindex={isDateVisible(fullDate) && isSameDate(focusedDate, fullDate)
+                        ? 0
+                        : -1}
+                      aria-label={isDateVisible(fullDate) ? getAriaLabelForDate(fullDate) : false}
+                      class:asd__day--enabled={dayNumber !== 0}
+                      class:asd__day--empty={dayNumber === 0}
+                      class:asd__day--disabled={isDisabled(fullDate)}
+                      class:asd__day--selected={fullDate &&
+                        (selectedDate1 === fullDate || selectedDate2 === fullDate)}
+                      class:asd__day--in-range={isInRange(fullDate)}
+                      class:asd__day--today={fullDate && isToday(fullDate)}
+                      class:asd__day--hovered={isHoveredInRange(fullDate)}
+                      class:asd__selected-date-one={fullDate && fullDate === selectedDate1}
+                      class:asd__selected-date-two={fullDate && fullDate === selectedDate2}
+                      style={stylesToString(getDayStyles(fullDate))}
+                      on:mouseover={() => setHoverDate(fullDate)}
+                      on:focus={() => {}}
+                    >
+                      {#if dayNumber}
+                        <!-- FIXME: date={fullDate} -->
+                        <button
+                          class="asd__day-button"
+                          type="button"
+                          tabindex="-1"
+                          disabled={isDisabled(fullDate)}
+                          on:click={() => selectDate(fullDate)}>{dayNumber}</button
+                        >
+                      {/if}
+                    </td>
+                  {/each}
+                </tr>
               {/each}
-            </div>
-           {/each}
-         </div>
-   
-         <div class="asd__inner-wrapper" style="{innerStyles}">
-           <transition-group name="asd__list-complete" tag="div">
-             <div
-               v-for="(month, monthIndex) in months"
-               :key="month.firstDateOfMonth"
-               class="asd__month"
-               :class="{'asd__month--hidden': monthIndex === 0 || monthIndex > showMonths}"
-               :style="monthWidthStyles"
-             >
-               <div class="asd__month-name">
-                 <select
-                   v-if="showMonthYearSelect"
-                   v-model="month.monthName"
-                   class="asd__month-year-select"
-                   :tabindex="monthIndex === 0 || monthIndex > showMonths ? -1 : 0"
-                   @change="updateMonth(monthIndex, month.year, $event)"
-                   v-resize-select
-                 >
-                   <option
-                     v-for="(monthName, idx) in monthNames"
-                     :value="monthName"
-                     :disabled="isMonthDisabled(month.year, idx)"
-                     :key="`month-${monthIndex}-${monthName}`"
-                   >{{ monthName }}</option>
-                 </select>
-                 <span v-else>{{ month.monthName }}</span>
-   
-                 <select
-                   v-if="showMonthYearSelect"
-                   class="asd__month-year-select"
-                   :tabindex="monthIndex === 0 || monthIndex > showMonths ? -1 : 0"
-                   v-model="month.year"
-                   @change="updateYear(monthIndex, month.monthNumber - 1, $event)"
-                 >
-                   <option
-                     v-if="years.indexOf(month.year) === -1"
-                     :value="month.year"
-                     :key="`month-${monthIndex}-${year}`"
-                     :disabled="true"
-                   >{{ month.year }}</option>
-                   <option
-                     v-for="year in years"
-                     :value="year"
-                     :key="`month-${monthIndex}-${year}`"
-                   >{{ year }}</option>
-                 </select>
-                 <span v-else>{{ month.year }}</span>
-               </div>
-   
-               <table class="asd__month-table" role="presentation">
-                 <tbody>
-                   <tr class="asd__week" v-for="(week, index) in month.weeks" :key="index">
-                     <td
-                       class="asd__day"
-                       v-for="({fullDate, dayNumber}, index) in week"
-                       :key="index + '_' + dayNumber"
-                       :data-date="fullDate"
-                       :ref="`date-${fullDate}`"
-                       :tabindex="isDateVisible(fullDate) && isSameDate(focusedDate, fullDate) ? 0 : -1"
-                       :aria-label="isDateVisible(fullDate) ? getAriaLabelForDate(fullDate) : false"
-                       :class="[{
-                         'asd__day--enabled': dayNumber !== 0,
-                         'asd__day--empty': dayNumber === 0,
-                         'asd__day--disabled': isDisabled(fullDate),
-                         'asd__day--selected': fullDate && (selectedDate1 === fullDate || selectedDate2 === fullDate),
-                         'asd__day--in-range': isInRange(fullDate),
-                         'asd__day--today': fullDate && isToday(fullDate),
-                         'asd__day--hovered': isHoveredInRange(fullDate),
-                         'asd__selected-date-one': fullDate && fullDate === selectedDate1,
-                         'asd__selected-date-two': fullDate && fullDate === selectedDate2,
-                       }, customizedDateClass(fullDate)]"
-                       :style="getDayStyles(fullDate)"
-                       @mouseover="() => { setHoverDate(fullDate) }"
-                     >
-                       <button
-                         class="asd__day-button"
-                         type="button"
-                         v-if="dayNumber"
-                         tabindex="-1"
-                         :date="fullDate"
-                         :disabled="isDisabled(fullDate)"
-                         @click="() => { selectDate(fullDate) }"
-                       >{{ dayNumber }}</button>
-                     </td>
-                   </tr>
-                 </tbody>
-               </table>
-             </div>
-           </transition-group>
-           <div
-             v-if="showShortcutsMenuTrigger"
-             :class="{ 'asd__keyboard-shortcuts-menu': true, 'asd__keyboard-shortcuts-show': showKeyboardShortcutsMenu}"
-             :style="keyboardShortcutsMenuStyles"
-           >
-             <div class="asd__keyboard-shortcuts-title">{{ texts.keyboardShortcuts }}</div>
-             <button
-               class="asd__keyboard-shortcuts-close"
-               ref="keyboard-shortcus-menu-close"
-               tabindex="0"
-               @click="closeKeyboardShortcutsMenu"
-               :aria-label="ariaLabels.closeKeyboardShortcutsMenu"
-             >
-               <slot v-if="$slots['close-shortcuts-icon']" name="close-shortcuts-icon"></slot>
-               <div v-else class="asd__mobile-close-icon" aria-hidden="true">X</div>
-             </button>
-             <ul class="asd__keyboard-shortcuts-list">
-               <li v-for="(shortcut, i) in keyboardShortcuts" :key="i">
-                 <span
-                   class="asd__keyboard-shortcuts-symbol"
-                   :aria-label="shortcut.symbolDescription"
-                 >{{ shortcut.symbol }}</span>
-                 {{ shortcut.label }}
-               </li>
-             </ul>
-           </div>
-         </div>
-         <div class="asd__action-buttons" v-if="mode !== 'single' && showActionButtons">
-           <button @click="closeDatepickerCancel" type="button">{{ texts.cancel }}</button>
-           <button
-             ref="apply-button"
-             @click="apply"
-             :style="{color: colors.selected}"
-             type="button"
-           >{{ texts.apply }}</button>
-         </div>
-         <div v-if="showShortcutsMenuTrigger" class="asd__keyboard-shortcuts-trigger-wrapper">
-           <button
-             class="asd__keyboard-shortcuts-trigger"
-             :aria-label="ariaLabels.openKeyboardShortcutsMenu"
-             tabindex="0"
-             @click="openKeyboardShortcutsMenu"
-           >
-             <span>?</span>
-           </button>
-         </div>
-       </div>
+            </tbody>
+          </table>
+        </div>
+      {/each}
+    </div>
+    {#if showShortcutsMenuTrigger}
+      <div
+        class="asd__keyboard-shortcuts-menu {showKeyboardShortcutsMenu
+          ? 'asd__keyboard-shortcuts-show'
+          : ''}"
+        style={stylesToString(keyboardShortcutsMenuStyles)}
+      >
+        <div class="asd__keyboard-shortcuts-title">{texts.keyboardShortcuts}</div>
+        <button
+          class="asd__keyboard-shortcuts-close"
+          bind:this={keyboardShortcusMenuClose}
+          tabindex="0"
+          on:click={closeKeyboardShortcutsMenu}
+          aria-label={ariaLabels.closeKeyboardShortcutsMenu}
+        >
+          {#if $$slots['close-shortcuts-icon']}
+            <slot name="close-shortcuts-icon" />
+          {:else}
+            <div class="asd__mobile-close-icon" aria-hidden="true">X</div>
+          {/if}
+        </button>
+        <ul class="asd__keyboard-shortcuts-list">
+          {#each keyboardShortcuts as shortcut, i (i)}
+            <li>
+              <span class="asd__keyboard-shortcuts-symbol" aria-label={shortcut.symbolDescription}
+                >{shortcut.symbol}</span
+              >
+              {shortcut.label}
+            </li>
+          {/each}
+        </ul>
+      </div>
     {/if}
-</transition>
+  </div>
+  {#if mode !== 'single' && showActionButtons}
+    <div class="asd__action-buttons">
+      <button on:click={closeDatepickerCancel} type="button">{texts.cancel}</button>
+      <button
+        bind:this={applyButton}
+        on:click={apply}
+        style={`color: ${colors.selected}`}
+        type="button">{texts.apply}</button
+      >
+    </div>
+  {/if}
+  {#if showShortcutsMenuTrigger}
+    <div class="asd__keyboard-shortcuts-trigger-wrapper">
+      <button
+        class="asd__keyboard-shortcuts-trigger"
+        aria-label={ariaLabels.openKeyboardShortcutsMenu}
+        tabindex="0"
+        on:click={openKeyboardShortcutsMenu}
+      >
+        <span>?</span>
+      </button>
+    </div>
+  {/if}
+</div>
+
+<style lang="scss" global>
+  $tablet: 768px;
+  $color-gray: rgba(0, 0, 0, 0.2);
+  $border-normal: 1px solid $color-gray;
+  $border: 1px solid #e4e7e7;
+  $transition-time: 0.3s;
+  .hidden {
+    visibility: hidden;
+  }
+  .datepicker-trigger {
+    position: relative;
+    overflow: visible;
+  }
+  .asd {
+    &__wrapper {
+      border: $border-normal;
+      white-space: nowrap;
+      text-align: center;
+      overflow: hidden;
+      background-color: white;
+      *,
+      *:after,
+      *:before {
+        box-sizing: border-box;
+      }
+      &--full-screen {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        border: none;
+        z-index: 100;
+      }
+    }
+    &__inner-wrapper {
+      transition: all $transition-time ease;
+      position: relative;
+    }
+    &__datepicker-header {
+      position: relative;
+    }
+    &__keyboard-shortcuts-trigger-wrapper {
+      position: relative;
+    }
+    &__keyboard-shortcuts-trigger {
+      background-color: transparent;
+      cursor: pointer;
+      position: absolute;
+      bottom: 0px;
+      right: 0px;
+      font: inherit;
+      border-width: 26px 33px 0px 0px;
+      border-top: 26px solid transparent;
+      border-right: 33px solid rgb(0, 166, 153);
+      span {
+        color: rgb(255, 255, 255);
+        position: absolute;
+        bottom: 0px;
+        right: -28px;
+      }
+    }
+    &__keyboard-shortcuts-show {
+      display: block !important;
+    }
+    &__keyboard-shortcuts-close {
+      background-color: transparent;
+      border: none;
+      position: absolute;
+      top: 7px;
+      right: 5px;
+      padding: 5px;
+      z-index: 100;
+      cursor: pointer;
+    }
+    &__keyboard-shortcuts-menu {
+      display: none;
+      position: absolute;
+      top: 0px;
+      bottom: 0px;
+      right: 0px;
+      z-index: 10;
+      overflow: auto;
+      background: rgb(255, 255, 255);
+      border-width: 1px;
+      border-style: solid;
+      border-color: rgb(219, 219, 219);
+      border-image: initial;
+      border-radius: 2px;
+      padding: 22px;
+      margin: 33px;
+      text-align: left;
+    }
+    &__keyboard-shortcuts-title {
+      font-size: 16px;
+      font-weight: bold;
+      margin: 0px;
+    }
+    &__keyboard-shortcuts-list {
+      list-style: none;
+      margin: 6px 0px;
+      padding: 0px;
+      white-space: initial;
+    }
+    &__keyboard-shortcuts-symbol {
+      font-family: monospace;
+      font-size: 12px;
+      text-transform: uppercase;
+      background: rgb(242, 242, 242);
+      padding: 2px 6px;
+      margin-right: 4px;
+    }
+    &__change-month-button {
+      position: absolute;
+      top: 12px;
+      z-index: 10;
+      background: white;
+      &--previous {
+        left: 0;
+        padding-left: 15px;
+      }
+      &--next {
+        right: 0;
+        padding-right: 15px;
+      }
+      > button {
+        background-color: white;
+        border: $border;
+        border-radius: 3px;
+        padding: 4px 8px;
+        cursor: pointer;
+        &:hover {
+          border: 1px solid #c4c4c4;
+        }
+        > svg {
+          height: 19px;
+          width: 19px;
+          fill: #82888a;
+        }
+      }
+    }
+    &__days-legend {
+      position: absolute;
+      top: 50px;
+      left: 10px;
+      padding: 0 10px;
+    }
+    &__day-title {
+      display: inline-block;
+      width: percentage(1/7);
+      text-align: center;
+      margin-bottom: 4px;
+      color: rgba(0, 0, 0, 0.7);
+      font-size: 0.8em;
+      margin-left: -1px;
+    }
+    &__month-table {
+      border-collapse: collapse;
+      border-spacing: 0;
+      background: white;
+      width: 100%;
+      max-width: 100%;
+    }
+    &__month {
+      transition: all $transition-time ease;
+      display: inline-block;
+      padding: 15px;
+      &--hidden {
+        height: 275px;
+        visibility: hidden;
+      }
+    }
+    &__month-name {
+      font-size: 1.3em;
+      text-align: center;
+      margin: 0 0 30px;
+      line-height: 1.4em;
+      font-weight: bold;
+    }
+    &__month-year-select {
+      &::-ms-expand {
+        display: none;
+      }
+      -webkit-appearance: none;
+      border: none;
+      background-color: inherit;
+      cursor: pointer;
+      color: blue;
+      font-size: inherit;
+      font-weight: inherit;
+      padding: 0;
+    }
+    &__day {
+      $size: 38px;
+      line-height: $size;
+      height: $size;
+      padding: 0;
+      overflow: hidden;
+      &--enabled {
+        border: $border;
+        &:hover {
+          background-color: #e4e7e7;
+        }
+        &:focus {
+          outline: auto 5px Highlight;
+          outline: auto 5px -webkit-focus-ring-color;
+        }
+      }
+      &--disabled,
+      &--empty {
+        opacity: 0.5;
+        button {
+          cursor: default;
+        }
+      }
+      &--empty {
+        border: none;
+      }
+      &--disabled {
+        &:hover {
+          background-color: transparent;
+        }
+      }
+    }
+    &__day-button {
+      background: transparent;
+      width: 100%;
+      height: 100%;
+      border: none;
+      cursor: pointer;
+      color: inherit;
+      text-align: center;
+      user-select: none;
+      font-size: 15px;
+      font-weight: inherit;
+      padding: 0;
+    }
+    &__action-buttons {
+      min-height: 50px;
+      padding-top: 10px;
+      margin-bottom: 12px;
+      button {
+        display: block;
+        position: relative;
+        background: transparent;
+        border: none;
+        font-weight: bold;
+        font-size: 15px;
+        cursor: pointer;
+        &:hover {
+          text-decoration: underline;
+        }
+        &:nth-child(1) {
+          float: left;
+          left: 15px;
+        }
+        &:nth-child(2) {
+          float: right;
+          right: 15px;
+        }
+      }
+    }
+    &__mobile-header {
+      border-bottom: $border-normal;
+      position: relative;
+      padding: 15px 15px 15px 15px !important;
+      text-align: center;
+      height: 50px;
+      h3 {
+        font-size: 20px;
+        margin: 0;
+      }
+    }
+    &__mobile-only {
+      display: none;
+      @media (max-width: 600px) {
+        display: block;
+      }
+    }
+    &__mobile-close {
+      border: none;
+      position: absolute;
+      top: 7px;
+      right: 5px;
+      padding: 5px;
+      z-index: 100;
+      cursor: pointer;
+      &__icon {
+        position: relative;
+        font-size: 1.6em;
+        font-weight: bold;
+        padding: 0;
+      }
+    }
+  }
+</style>

@@ -21,3 +21,9 @@ declare module '*.svg?url' {
   const content: string;
   export default content;
 }
+
+declare namespace svelte.JSX {
+  interface HTMLProps<T> {
+    onclick_outside?: (e: CustomEvent) => void;
+  }
+}
