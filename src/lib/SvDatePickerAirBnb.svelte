@@ -46,7 +46,24 @@
     firstDateOfMonth: string;
     monthName: string;
     monthNumber: number;
-    weeks: any[];
+    weeks: Week[][];
+  }
+
+  export interface Box {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    width: number;
+    height: number;
+    x: number;
+    y: number;
+  }
+
+  interface Week {
+    dayNumber: number;
+    dayNumberFull?: string;
+    fullDate: string;
   }
 
   export const datepickerConfig: DatepickerOptions = {};
@@ -77,7 +94,7 @@
   import { debounce, copyObject, findAncestor, randomString } from './../helpers';
   import { clickOutside } from '../directives/clickOutside';
   //   import ResizeSelect from '../directives/ResizeSelect';
-  import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
+  import { createEventDispatcher, onDestroy, onMount, afterUpdate, tick } from 'svelte';
   import { fade } from 'svelte/transition';
   import { parseISO, toDate } from 'date-fns';
 
@@ -107,7 +124,11 @@
 
   const dispatch = createEventDispatcher();
 
-  let el: HTMLElement;
+  afterUpdate(() => {
+    console.log('UPDATED');
+  })
+
+  // let el: HTMLElement;
   let applyButton: HTMLButtonElement;
   let keyboardShortcusMenuClose: HTMLButtonElement;
 
@@ -117,7 +138,7 @@
   let showDatepicker: boolean = false;
   let showKeyboardShortcutsMenu: boolean = false;
   let showMonths: number = 2;
-  const colors: Colors = {
+  let colors: Readonly<Colors> = {
     selected: '#00a699',
     inRange: '#66e2da',
     selectedText: '#fff',
@@ -126,8 +147,8 @@
     disabled: '#fff',
     hoveredInRange: '#67f6ee'
   };
-  let sundayFirst: boolean = false;
-  let ariaLabels: any = {
+  let sundayFirst = false;
+  let ariaLabels = {
     chooseDate: (date: string) => date,
     chooseStartDate: (date: string) => `Choose ${date} as your start date.`,
     chooseEndDate: (date: string) => `Choose ${date} as your end date.`,
@@ -139,7 +160,7 @@
     openKeyboardShortcutsMenu: 'Open keyboard shortcuts menu.',
     closeKeyboardShortcutsMenu: 'Close keyboard shortcuts menu'
   };
-  let monthNames: string[] = [
+  let monthNames: readonly string[] = [
     'January',
     'February',
     'March',
@@ -153,7 +174,7 @@
     'November',
     'December'
   ];
-  let days: string[] = [
+  let days: readonly string[] = [
     'Monday',
     'Tuesday',
     'Wednesday',
@@ -162,13 +183,13 @@
     'Saturday',
     'Sunday'
   ];
-  let daysShort: string[] = ['Mon', 'Tue', 'Wed', 'Thur', 'Fri', 'Sat', 'Sun'];
-  const texts: Texts = {
+  let daysShort: readonly string[] = ['Mon', 'Tue', 'Wed', 'Thur', 'Fri', 'Sat', 'Sun'];
+  let texts: Readonly<Texts> = {
     apply: 'Apply',
     cancel: 'Cancel',
     keyboardShortcuts: 'Keyboard Shortcuts'
   };
-  let keyboardShortcuts: any[] = [
+  let keyboardShortcuts = [
     { symbol: '↵', label: 'Select the date in focus', symbolDescription: 'Enter key' },
     {
       symbol: '←/→',
@@ -193,7 +214,7 @@
     { symbol: 'Esc', label: 'Close this panel', symbolDescription: 'Escape key' },
     { symbol: '?', label: 'Open this panel', symbolDescription: 'Question mark' }
   ];
-  const keys: Keys = {
+  const keys: Readonly<Keys> = {
     arrowDown: 40,
     arrowUp: 38,
     arrowRight: 39,
@@ -207,20 +228,20 @@
     esc: 27
   };
   let startingDate: Date | string = '';
-  let months: Month[] = [];
-  let years: string[] = [];
+  let months: Readonly<Month[]> = [];
+  let years: Readonly<string[]> = [];
   let width: number = 300;
   let selectedDate1: string | Date = '';
   let selectedDate2: string | Date = '';
   let isSelectingDate1: boolean = true;
   let hoverDate: string | Date = '';
-  let focusedDate: Date | string;
+  let focusedDate: Date;
   let alignRight: boolean = false;
-  let triggerPosition: any = {};
-  let triggerWrapperPosition: any = {};
+  let triggerPosition: Readonly<Box> = { x: 0, y: 0, width: 0, height: 0, left: 0, right: 0, top: 0, bottom: 0 };
+  let triggerWrapperPosition: Readonly<Box> = { x: 0, y: 0, width: 0, height: 0, left: 0, right: 0, top: 0, bottom: 0 };
   let viewportWidth: string | undefined = undefined;
-  let isMobile: boolean | undefined = undefined;
-  let isTablet: boolean | undefined = undefined;
+  let isMobile = false;
+  let isTablet = false;
   let triggerElement!: HTMLElement;
   let fullDateRefs: Record<string, HTMLElement> = {};
   let _initialDate1: Date | string;
@@ -270,7 +291,7 @@
     ? false
     : isBefore(normalizeDate(dateTwo), normalizeDate(dateOne));
   $: visibleMonths = getVisibleMonths(months, showMonths);
-  function getVisibleMonths(monthsAtr: any[], showMonthsAtr: number) {
+  function getVisibleMonths(monthsAtr: Readonly<Month[]>, showMonthsAtr: number) {
     const firstMonthArray = monthsAtr.filter((m, index) => index > 0);
     const numberOfMonthsArray = [];
     for (let i = 0; i < showMonthsAtr; i++) {
@@ -363,8 +384,8 @@
     if (startOpen || inline) {
       openDatepicker();
     }
-    el.addEventListener('keyup', handleKeyboardInput);
-    el.addEventListener('keydown', trapKeyboardInput);
+    // el.addEventListener('keyup', handleKeyboardInput);
+    // el.addEventListener('keydown', trapKeyboardInput);
     triggerElement.addEventListener('keyup', handleTriggerInput);
     triggerElement.addEventListener('click', handleWindowClickEvent);
   });
@@ -378,12 +399,16 @@
     // triggerElement.removeEventListener('click', this._handleWindowClickEvent);
   });
 
-  function getDayStyles(date: Date) {
+  function getRandom() {
+    return Math.random();
+  }
+
+  function getDayStyles(date: Date | string, hoverDate: Date | string) {
     const selected = isSelected(date);
     const inRange = isInRange(date);
     const disabled = isDisabled(date);
     const hoveredInRange = isHoveredInRange(date);
-    let styles = {
+    const styles = {
       width: (width - 30) / 7 + 'px',
       background: selected
         ? colors.selected
@@ -406,6 +431,7 @@
     if (disabled) {
       styles.background = colors.disabled;
     }
+    console.log("UPDATE STYLES", styles);
     return styles;
   }
 
@@ -564,28 +590,32 @@
   }
 
   function generateMonths() {
-    months = [];
+    const newMonths: Month[] = [];
     let currentMonth = startingDate;
     for (let i = 0; i < showMonths + 2; i++) {
-      months.push(getMonthObject(normalizeDate(currentMonth)));
+      newMonths.push(getMonthObject(normalizeDate(currentMonth)));
       currentMonth = addMonthsFormatted(currentMonth);
     }
+    months = newMonths;
   }
 
   function generateYears() {
     if (!showMonthYearSelect) return;
-    years = [];
+
+    const newYears: string[] = [];
+
     const currentYear = getYear(normalizeDate(startingDate));
     const startYear = minDate ? getYear(normalizeDate(minDate)) : currentYear - yearsForSelect;
     const endYear = endDate ? getYear(normalizeDate(endDate)) : currentYear + yearsForSelect;
-    for (var year = startYear; year <= endYear; year++) {
-      years.push(year.toString());
+    for (let year = startYear; year <= endYear; year++) {
+      newYears.push(year.toString());
     }
+    years = newYears;
   }
 
   function setupDatepicker() {
     if (datepickerConfig.ariaLabels) {
-      ariaLabels = copyObject(datepickerConfig.ariaLabels);
+      ariaLabels = {...datepickerConfig.ariaLabels};
     }
     if (datepickerConfig.keyboardShortcuts) {
       keyboardShortcuts = copyObject(datepickerConfig.keyboardShortcuts);
@@ -598,13 +628,15 @@
     }
     if (datepickerConfig.colors) {
       const colorsOptions = copyObject(datepickerConfig.colors);
-      colors.selected = colorsOptions.selected || colorsOptions.selected;
-      colors.inRange = colorsOptions.inRange || colorsOptions.inRange;
-      colors.hoveredInRange = colorsOptions.hoveredInRange || colorsOptions.hoveredInRange;
-      colors.selectedText = colorsOptions.selectedText || colorsOptions.selectedText;
-      colors.text = colorsOptions.text || colorsOptions.text;
-      colors.inRangeBorder = colorsOptions.inRangeBorder || colorsOptions.inRangeBorder;
-      colors.disabled = colorsOptions.disabled || colorsOptions.disabled;
+      colors = {
+        selected: colorsOptions.selected || colorsOptions.selected,
+        inRange: colorsOptions.inRange || colorsOptions.inRange,
+        hoveredInRange: colorsOptions.hoveredInRange || colorsOptions.hoveredInRange,
+        selectedText: colorsOptions.selectedText || colorsOptions.selectedText,
+        text: colorsOptions.text || colorsOptions.text,
+        inRangeBorder: colorsOptions.inRangeBorder || colorsOptions.inRangeBorder,
+        disabled: colorsOptions.disabled || colorsOptions.disabled,
+      }
     }
     if (datepickerConfig.monthNames && datepickerConfig.monthNames.length === 12) {
       monthNames = copyObject(datepickerConfig.monthNames);
@@ -617,8 +649,10 @@
     }
     if (datepickerConfig.texts) {
       const textsOptions = copyObject(datepickerConfig.texts);
-      texts.apply = textsOptions.apply || textsOptions.apply;
-      texts.cancel = textsOptions.cancel || textsOptions.cancel;
+      texts = Object.assign({}, texts, {
+        apply: textsOptions.apply || textsOptions.apply,
+        cancel: textsOptions.cancel || textsOptions.cancel
+      })
     }
   }
 
@@ -635,10 +669,8 @@
   }
 
   function setSundayToFirstDayInWeek() {
-    const lastDay = days.pop()!;
-    days.unshift(lastDay);
-    const lastDayShort = daysShort.pop()!;
-    daysShort.unshift(lastDayShort);
+    days = [days[days.length - 1], ...days.slice(0, days.length - 1)]
+    daysShort = [daysShort[daysShort.length - 1], ...daysShort.slice(0, daysShort.length - 1)]
   }
 
   function getMonthObject(date: Date) {
@@ -657,13 +689,14 @@
 
   function getWeeks(date: Date) {
     console.log(date);
-    const weekDayNotInMonth = { dayNumber: 0 };
+    const weekDayNotInMonth: Week = { dayNumber: 0, fullDate: '' };
     const daysInMonth = getDaysInMonth(date);
     const year = format(date, 'yyyy');
     const month = format(date, 'MM');
     let firstDayInWeek = parseInt(format(date, 'i'));
-    let weeks = [];
-    let week = [];
+
+    const weeks: Week[][] = [];
+    let week: Week[] = [];
     // add empty days to get first day in correct position
     for (let s = 1; s < firstDayInWeek; s++) {
       week.push(weekDayNotInMonth);
@@ -671,7 +704,7 @@
     for (let d = 0; d < daysInMonth; d++) {
       let isLastDayInMonth = d >= daysInMonth - 1;
       let dayNumber = d + 1;
-      let dayNumberFull = dayNumber < 10 ? '0' + dayNumber : dayNumber;
+      let dayNumberFull = dayNumber < 10 ? '0' + dayNumber : dayNumber.toString();
       week.push({
         dayNumber,
         dayNumberFull: dayNumberFull,
@@ -727,8 +760,8 @@
   }
 
   function setFocusedDate(date: Date) {
+    focusedDate = new Date(date.getTime());
     const formattedDate = format(date, dateFormat);
-    focusedDate = formattedDate;
     const dateElement = fullDateRefs[`date-${formattedDate}`];
     // handle .focus() on ie11 by adding a short timeout
     if (dateElement) {
@@ -745,7 +778,7 @@
       const monthIdx = getMonth(targetMonth);
       const year = getYear(targetMonth);
       const newFocusedDate = setYear(setMonth(normalizeDate(focusedDate), monthIdx), year);
-      focusedDate = format(newFocusedDate, dateFormat);
+      focusedDate = new Date(newFocusedDate.getTime());
     }
   }
 
@@ -853,8 +886,9 @@
 
   function previousMonth() {
     startingDate = subtractMonths(months[0].firstDateOfMonth);
-    months.unshift(getMonthObject(normalizeDate(startingDate)));
-    months.splice(months.length - 1, 1);
+    months = [getMonthObject(normalizeDate(startingDate)), ...months.slice(0, months.length - 1)];
+    // months.unshift();
+    // months.splice(months.length - 1, 1);
     dispatch('previous-month', visibleMonths);
     resetFocusedDate(false);
   }
@@ -863,8 +897,7 @@
     console.log(JSON.stringify(visibleMonths));
     console.log(months);
     startingDate = addMonthsFormatted(months[months.length - 1].firstDateOfMonth);
-    months.push(getMonthObject(normalizeDate(startingDate)));
-    months.splice(0, 1);
+    months = [...months.slice(1), getMonthObject(normalizeDate(startingDate))];
     dispatch('next-month', visibleMonths);
     resetFocusedDate(true);
     console.log(JSON.stringify(visibleMonths));
@@ -960,7 +993,7 @@
     if (triggerWrapperElement) {
       triggerWrapperPosition = triggerWrapperElement.getBoundingClientRect();
     } else {
-      triggerWrapperPosition = { left: 0, right: 0 };
+      triggerWrapperPosition = { left: 0, right: 0, bottom: 0, top: 0, width: 0, height: 0, x: 0, y: 0 };
     }
     const viewportWidthNumber = document.documentElement.clientWidth || windowInnerWidth;
     viewportWidth = viewportWidthNumber + 'px';
@@ -987,9 +1020,11 @@
 
   function stylesToString(styles: any) {
     const arrayStyles = Object.entries(styles);
-    const stringStyles = [];
+    const stringStyles: string[] = [];
     for (const style of arrayStyles) {
-      stringStyles.push(`${style[0]}: ${style[1]};`);
+      if (style[1]) {
+        stringStyles.push(`${style[0]}: ${style[1]};`);
+      }
     }
     return stringStyles.join(' ');
   }
@@ -1033,13 +1068,13 @@
   class="asd__wrapper {classesToString(wrapperClasses)}"
   class:hidden={!showDatepicker}
   style={showFullscreen ? null : stylesToString(wrapperStyles)}
-  bind:this={el}
   on:keyup={handleKeyboardInput}
   on:keydown={trapKeyboardInput}
   transition:fade
   use:clickOutside
   on:click_outside={handleClickOutside}
 >
+{months}
   {#if showFullscreen}
     <div class="asd__mobile-header asd__mobile-only">
       <button
@@ -1155,7 +1190,7 @@
                       tabindex={isDateVisible(fullDate) && isSameDate(focusedDate, fullDate)
                         ? 0
                         : -1}
-                      aria-label={isDateVisible(fullDate) ? getAriaLabelForDate(fullDate) : false}
+                      aria-label={isDateVisible(fullDate) ? getAriaLabelForDate(fullDate) : null}
                       class:asd__day--enabled={dayNumber !== 0}
                       class:asd__day--empty={dayNumber === 0}
                       class:asd__day--disabled={isDisabled(fullDate)}
@@ -1166,7 +1201,8 @@
                       class:asd__day--hovered={isHoveredInRange(fullDate)}
                       class:asd__selected-date-one={fullDate && fullDate === selectedDate1}
                       class:asd__selected-date-two={fullDate && fullDate === selectedDate2}
-                      style={stylesToString(getDayStyles(fullDate))}
+                      data-roba={getRandom()}
+                      style={stylesToString(getDayStyles(fullDate, hoverDate))}
                       on:mouseover={() => setHoverDate(fullDate)}
                       on:focus={() => {}}
                     >
