@@ -91,12 +91,13 @@
   import isBefore from 'date-fns/isBefore';
   import isAfter from 'date-fns/isAfter';
   import isValid from 'date-fns/isValid';
-  import { debounce, copyObject, findAncestor, randomString } from './../helpers';
+  import { debounce, copyObject, findAncestor, randomString } from '../helpers';
   import { clickOutside } from '../directives/clickOutside';
   //   import ResizeSelect from '../directives/ResizeSelect';
   import { createEventDispatcher, onDestroy, onMount, afterUpdate, tick } from 'svelte';
   import { fade } from 'svelte/transition';
   import { parseISO, toDate } from 'date-fns';
+  import { fly } from 'svelte/transition';
 
   export let triggerElementId: string;
   export let dateOne: string | Date = '';
@@ -115,7 +116,7 @@
   export let enabledDates: Date[] = [];
   export let customizedDates: any[] = [];
   export let showActionButtons: boolean = true;
-  export let showShortcutsMenuTrigger: boolean = true;
+  export let showShortcutsMenuTrigger: boolean = false;
   export let showMonthYearSelect: boolean = false;
   export let yearsForSelect: number = 10;
   export let trigger: boolean = false;
@@ -123,10 +124,6 @@
   export let isTest: boolean = process.env.NODE_ENV === 'test';
 
   const dispatch = createEventDispatcher();
-
-  afterUpdate(() => {
-    console.log('UPDATED');
-  })
 
   // let el: HTMLElement;
   let applyButton: HTMLButtonElement;
@@ -237,8 +234,26 @@
   let hoverDate: string | Date = '';
   let focusedDate: Date;
   let alignRight: boolean = false;
-  let triggerPosition: Readonly<Box> = { x: 0, y: 0, width: 0, height: 0, left: 0, right: 0, top: 0, bottom: 0 };
-  let triggerWrapperPosition: Readonly<Box> = { x: 0, y: 0, width: 0, height: 0, left: 0, right: 0, top: 0, bottom: 0 };
+  let triggerPosition: Readonly<Box> = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0
+  };
+  let triggerWrapperPosition: Readonly<Box> = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0
+  };
   let viewportWidth: string | undefined = undefined;
   let isMobile = false;
   let isTablet = false;
@@ -615,7 +630,7 @@
 
   function setupDatepicker() {
     if (datepickerConfig.ariaLabels) {
-      ariaLabels = {...datepickerConfig.ariaLabels};
+      ariaLabels = { ...datepickerConfig.ariaLabels };
     }
     if (datepickerConfig.keyboardShortcuts) {
       keyboardShortcuts = copyObject(datepickerConfig.keyboardShortcuts);
@@ -635,8 +650,8 @@
         selectedText: colorsOptions.selectedText || colorsOptions.selectedText,
         text: colorsOptions.text || colorsOptions.text,
         inRangeBorder: colorsOptions.inRangeBorder || colorsOptions.inRangeBorder,
-        disabled: colorsOptions.disabled || colorsOptions.disabled,
-      }
+        disabled: colorsOptions.disabled || colorsOptions.disabled
+      };
     }
     if (datepickerConfig.monthNames && datepickerConfig.monthNames.length === 12) {
       monthNames = copyObject(datepickerConfig.monthNames);
@@ -652,7 +667,7 @@
       texts = Object.assign({}, texts, {
         apply: textsOptions.apply || textsOptions.apply,
         cancel: textsOptions.cancel || textsOptions.cancel
-      })
+      });
     }
   }
 
@@ -669,8 +684,8 @@
   }
 
   function setSundayToFirstDayInWeek() {
-    days = [days[days.length - 1], ...days.slice(0, days.length - 1)]
-    daysShort = [daysShort[daysShort.length - 1], ...daysShort.slice(0, daysShort.length - 1)]
+    days = [days[days.length - 1], ...days.slice(0, days.length - 1)];
+    daysShort = [daysShort[daysShort.length - 1], ...daysShort.slice(0, daysShort.length - 1)];
   }
 
   function getMonthObject(date: Date) {
@@ -688,7 +703,6 @@
   }
 
   function getWeeks(date: Date) {
-    console.log(date);
     const weekDayNotInMonth: Week = { dayNumber: 0, fullDate: '' };
     const daysInMonth = getDaysInMonth(date);
     const year = format(date, 'yyyy');
@@ -851,11 +865,6 @@
     }
     const start = subDays(visibleMonths[0], 1);
     const end = addDays(lastDayOfMonth(visibleMonths[monthsToShow - 1]), 1);
-    // console.group('date')
-    // console.log(date);
-    // console.log(start);
-    // console.log(end);
-    // console.groupEnd()
     return isAfter(date, start) && isBefore(date, end);
   }
 
@@ -993,7 +1002,16 @@
     if (triggerWrapperElement) {
       triggerWrapperPosition = triggerWrapperElement.getBoundingClientRect();
     } else {
-      triggerWrapperPosition = { left: 0, right: 0, bottom: 0, top: 0, width: 0, height: 0, x: 0, y: 0 };
+      triggerWrapperPosition = {
+        left: 0,
+        right: 0,
+        bottom: 0,
+        top: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0
+      };
     }
     const viewportWidthNumber = document.documentElement.clientWidth || windowInnerWidth;
     viewportWidth = viewportWidthNumber + 'px';
@@ -1008,14 +1026,6 @@
     const rightPosition =
       triggerElement.getBoundingClientRect().left + datepickerWrapper.getBoundingClientRect().width;
     alignRight = rightPosition > viewportWidthNumber;
-  }
-
-  function asdListComplete(node: HTMLElement, params: any) {
-    return {
-      delay: params.delay || 0,
-      duration: params.duration || 400,
-      css: (t: number, u: number) => `transform: translateY(${t * 30}px)`
-    };
   }
 
   function stylesToString(styles: any) {
@@ -1291,11 +1301,16 @@
   $border: 1px solid #e4e7e7;
   $transition-time: 0.3s;
   .hidden {
-    visibility: hidden;
+    display: none;
   }
   .datepicker-trigger {
     position: relative;
     overflow: visible;
+  }
+  .center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
   .asd {
     &__wrapper {

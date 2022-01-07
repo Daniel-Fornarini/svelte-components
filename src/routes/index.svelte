@@ -8,7 +8,7 @@
   import SvIcon from '$lib/SvIcon.svelte';
   import SvCheckbox from '$lib/SvCheckbox.svelte';
   import SvDatePickerAirBnb from '$lib/SvDatePickerAirBnb.svelte';
-import { format } from 'date-fns';
+  import { format } from 'date-fns';
 
   let test: boolean = false;
   let test1: boolean = false;
@@ -19,15 +19,25 @@ import { format } from 'date-fns';
 
   let checkbox: boolean = false;
 
-  let date1 = '';
-  let date2 = '';
+  let date1: string | Date = '';
+  let date2: string | Date = '';
 </script>
 
 <div class="datepicker-trigger">
-  <input type="text" id="datepicker-trigger" placeholder="Select dates" value={`${date1} - ${date2}`}>
-  <SvDatePickerAirBnb on:date-one-selected="{val => date1 = val.detail}" on:date-two-selected={val => date2 = val.detail} triggerElementId="datepicker-trigger"></SvDatePickerAirBnb>
+  <input
+    type="text"
+    id="datepicker-trigger"
+    placeholder="Select dates"
+    value={`${date1} - ${date2}`}
+  />
+  <SvDatePickerAirBnb
+    dateOne={date1}
+    dateTwo={date2}
+    on:date-one-selected={(e) => (date1 = e.detail)}
+    on:date-two-selected={(e) => (date2 = e.detail)}
+    triggerElementId="datepicker-trigger"
+  />
 </div>
-
 
 <!-- <SvCheckbox
   value={checkbox}
