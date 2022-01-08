@@ -9,6 +9,7 @@
   import SvCheckbox from '$lib/SvCheckbox.svelte';
   import SvDatePickerAirBnb from '$lib/SvDatePickerAirBnb.svelte';
   import { format } from 'date-fns';
+  import { AirbnbStyleDatepicker } from 'svelte-airbnb-style-datepicker';
 
   let test: boolean = false;
   let test1: boolean = false;
@@ -30,7 +31,14 @@
     placeholder="Select dates"
     value={`${date1} - ${date2}`}
   />
-  <SvDatePickerAirBnb
+  <!-- <SvDatePickerAirBnb
+    dateOne={date1}
+    dateTwo={date2}
+    on:date-one-selected={(e) => (date1 = e.detail)}
+    on:date-two-selected={(e) => (date2 = e.detail)}
+    triggerElementId="datepicker-trigger"
+  /> -->
+  <AirbnbStyleDatepicker
     dateOne={date1}
     dateTwo={date2}
     on:date-one-selected={(e) => (date1 = e.detail)}

@@ -94,10 +94,9 @@
   import { debounce, copyObject, findAncestor, randomString } from '../helpers';
   import { clickOutside } from '../directives/clickOutside';
   //   import ResizeSelect from '../directives/ResizeSelect';
-  import { createEventDispatcher, onDestroy, onMount, afterUpdate, tick } from 'svelte';
-  import { fade } from 'svelte/transition';
-  import { parseISO, toDate } from 'date-fns';
-  import { fly } from 'svelte/transition';
+  import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
+  import { parseISO } from 'date-fns';
 
   export let triggerElementId: string;
   export let dateOne: string | Date = '';
@@ -125,8 +124,6 @@
 
   const dispatch = createEventDispatcher();
 
-  // let el: HTMLElement;
-  let applyButton: HTMLButtonElement;
   let keyboardShortcusMenuClose: HTMLButtonElement;
 
   let wrapperId: string = 'airbnb-style-datepicker-wrapper-' + randomString(5);
@@ -301,7 +298,7 @@
   $: isRangeMode = mode === 'range';
   $: isSingleMode = mode === 'single';
   $: datepickerWidth = width * showMonths;
-  $: datePropsCompound = (dateOne as string) + (dateTwo as string);
+  $: datePropsCompound = `${dateOne as string}-${dateTwo as string}`;
   $: isDateTwoBeforeDateOne = !dateTwo
     ? false
     : isBefore(normalizeDate(dateTwo), normalizeDate(dateOne));
@@ -343,7 +340,7 @@
   }
   $: onDatePropsCompoundChange(datePropsCompound);
   function onDatePropsCompoundChange(newValue: string) {
-    if (dateOne !== selectedDate1) {
+    if (!isSameDay(normalizeDate(dateOne), normalizeDate(selectedDate1))) {
       startingDate = dateOne;
       setStartDates();
       generateMonths();
@@ -399,17 +396,11 @@
     if (startOpen || inline) {
       openDatepicker();
     }
-    // el.addEventListener('keyup', handleKeyboardInput);
-    // el.addEventListener('keydown', trapKeyboardInput);
     triggerElement.addEventListener('keyup', handleTriggerInput);
     triggerElement.addEventListener('click', handleWindowClickEvent);
   });
 
   onDestroy(() => {
-    // window.removeEventListener('resize', this._handleWindowResizeEvent);
-    // window.removeEventListener('click', this._handleWindowClickEvent);
-    // el.removeEventListener('keyup', handleKeyboardInput);
-    // el.removeEventListener('keydown', trapKeyboardInput);
     // triggerElement.removeEventListener('keyup', handleTriggerInput);
     // triggerElement.removeEventListener('click', this._handleWindowClickEvent);
   });
@@ -418,7 +409,7 @@
     return Math.random();
   }
 
-  function getDayStyles(date: Date | string, hoverDate: Date | string) {
+  function getDayStyles(date: Date | string, hoverDate: Date | string, updated: boolean) {
     const selected = isSelected(date);
     const inRange = isInRange(date);
     const disabled = isDisabled(date);
@@ -446,7 +437,7 @@
     if (disabled) {
       styles.background = colors.disabled;
     }
-    console.log("UPDATE STYLES", styles);
+    stylesUpdated = false;
     return styles;
   }
 
@@ -738,6 +729,8 @@
     return weeks;
   }
 
+  let stylesUpdated = false;
+
   function selectDate(date: Date | string) {
     date = normalizeDate(date);
     if (isBeforeMinDate(date) || isAfterEndDate(date) || isDateDisabled(date)) {
@@ -746,6 +739,7 @@
     if (mode === 'single') {
       selectedDate1 = date;
       closeDatepicker();
+      stylesUpdated = true;
       return;
     }
     if (isSelectingDate1 || isBefore(date, normalizeDate(selectedDate1))) {
@@ -761,12 +755,13 @@
         selectedDate1 = '';
       } else if (showActionButtons) {
         // if user has selected both dates, focus the apply button for accessibility
-        applyButton.focus();
+        document.getElementById('applyButton')?.focus();
       }
       if (allDatesSelected && closeAfterSelect) {
         closeDatepicker();
       }
     }
+    stylesUpdated = true;
   }
 
   function setHoverDate(date: string) {
@@ -893,24 +888,29 @@
     return isDateDisabled(date) || isBeforeMinDate(date) || isAfterEndDate(date);
   }
 
-  function previousMonth() {
+  let moveMonths = 0;
+
+  async function previousMonth() {
     startingDate = subtractMonths(months[0].firstDateOfMonth);
     months = [getMonthObject(normalizeDate(startingDate)), ...months.slice(0, months.length - 1)];
     // months.unshift();
     // months.splice(months.length - 1, 1);
     dispatch('previous-month', visibleMonths);
     resetFocusedDate(false);
+    moveMonths -= 1;
+    await tick();
+    moveMonths = -1;
   }
 
-  function nextMonth() {
-    console.log(JSON.stringify(visibleMonths));
-    console.log(months);
+  async function nextMonth() {
     startingDate = addMonthsFormatted(months[months.length - 1].firstDateOfMonth);
+    // months = R.append(getMonthObject(normalizeDate(startingDate)), months.slice(1));
     months = [...months.slice(1), getMonthObject(normalizeDate(startingDate))];
     dispatch('next-month', visibleMonths);
     resetFocusedDate(true);
-    console.log(JSON.stringify(visibleMonths));
-    console.log(months);
+    moveMonths += 1;
+    await tick();
+    moveMonths = 1;
   }
 
   function subtractMonths(date: Date | string) {
@@ -1072,227 +1072,228 @@
   bind:innerWidth={windowInnerWidth}
   on:resize={(event) => handleWindowResizeEvent(event)}
 />
-
-<div
-  id={wrapperId}
-  class="asd__wrapper {classesToString(wrapperClasses)}"
-  class:hidden={!showDatepicker}
-  style={showFullscreen ? null : stylesToString(wrapperStyles)}
-  on:keyup={handleKeyboardInput}
-  on:keydown={trapKeyboardInput}
-  transition:fade
-  use:clickOutside
-  on:click_outside={handleClickOutside}
->
-{months}
-  {#if showFullscreen}
-    <div class="asd__mobile-header asd__mobile-only">
-      <button
-        type="button"
-        class="asd__mobile-close"
-        on:click={closeDatepicker}
-        aria-label={ariaLabels.closeDatepicker}
-      >
-        {#if $$slots['close-icon']}
-          <slot name="close-icon" />
-        {:else}
-          <div class="asd__mobile-close-icon" aria-hidden="true">X</div>
-        {/if}
-      </button>
-      <h3>{mobileHeader || mobileHeaderFallback}</h3>
-    </div>
-  {/if}
-  <div class="asd__datepicker-header">
-    <div class="asd__change-month-button asd__change-month-button--previous">
-      <button on:click={previousMonth} type="button" aria-label={ariaLabels.previousMonth}>
-        {#if $$slots['previous-month-icon']}
-          <slot name="previous-month-icon" />
-        {:else}
-          <svg viewBox="0 0 1000 1000">
-            <path
-              d="M336.2 274.5l-210.1 210h805.4c13 0 23 10 23 23s-10 23-23 23H126.1l210.1 210.1c11 11 11 21 0 32-5 5-10 7-16 7s-11-2-16-7l-249.1-249c-11-11-11-21 0-32l249.1-249.1c21-21.1 53 10.9 32 32z"
-            />
-          </svg>
-        {/if}
-      </button>
-    </div>
-    <div class="asd__change-month-button asd__change-month-button--next">
-      <button on:click={nextMonth} type="button" aria-label={ariaLabels.nextMonth}>
-        {#if $$slots['next-month-icon']}
-          <slot name="next-month-icon" />
-        {:else}
-          <svg viewBox="0 0 1000 1000">
-            <path
-              d="M694.4 242.4l249.1 249.1c11 11 11 21 0 32L694.4 772.7c-5 5-10 7-16 7s-11-2-16-7c-11-11-11-21 0-32l210.1-210.1H67.1c-13 0-23-10-23-23s10-23 23-23h805.4L662.4 274.5c-21-21.1 11-53.1 32-32.1z"
-            />
-          </svg>
-        {/if}
-      </button>
-    </div>
-    {#each numberToArray(showMonths) as month, i (month)}
-      <div
-        class="asd__days-legend"
-        style="{stylesToString(monthWidthStyles)} {`left: ${width * i}px`}"
-      >
-        {#each daysShort as day, i (i)}
-          <div class="asd__day-title">{day}</div>
-        {/each}
-      </div>
-    {/each}
-  </div>
-  <div class="asd__inner-wrapper" style={stylesToString(innerStyles)}>
-    <div transition:asdListComplete>
-      {#each months as month, monthIndex (month.firstDateOfMonth)}
-        <!-- content here -->
-        <div
-          class="asd__month {monthIndex === 0 || monthIndex > showMonths
-            ? 'asd__month--hidden'
-            : ''}"
-          style={stylesToString(monthWidthStyles)}
-        >
-          <div class="asd__month-name">
-            {#if showMonthYearSelect}
-              <!-- TODO: v-resize-select -->
-              <select
-                bind:value={month.monthName}
-                class="asd__month-year-select"
-                tabindex={monthIndex === 0 || monthIndex > showMonths ? -1 : 0}
-                on:change={(event) => updateMonth(monthIndex, month.year, event)}
-              >
-                {#each monthNames as monthName, idx (`month-${monthIndex}-${monthName}`)}
-                  <!-- content here -->
-                  <option value={monthName} disabled={isMonthDisabled(+month.year, idx)}
-                    >{monthName}</option
-                  >
-                {/each}
-              </select>
-            {:else}
-              <span>{month.monthName}</span>
-            {/if}
-            {#if showMonthYearSelect}
-              <select
-                class="asd__month-year-select"
-                tabindex={monthIndex === 0 || monthIndex > showMonths ? -1 : 0}
-                bind:value={month.year}
-                on:change={(event) => updateYear(monthIndex, month.monthNumber - 1, event)}
-              >
-                {#if years.indexOf(month.year) === -1}
-                  <!-- TODO: :key="`month-${monthIndex}-${year}`" -->
-                  <option value={month.year} disabled={true}>{month.year}</option>
-                {/if}
-                {#each years as year (`month-${monthIndex}-${year}`)}
-                  <option value={year}>{year}</option>
-                {/each}
-              </select>
-            {:else}
-              <span>{month.year}</span>
-            {/if}
-          </div>
-          <table class="asd__month-table" role="presentation">
-            <tbody>
-              {#each month.weeks as week, index (index)}
-                <tr class="asd__week">
-                  {#each week as { fullDate, dayNumber }, index (`${index}_${dayNumber}`)}
-                    <td
-                      class="asd__day {classesToString(customizedDateClass(fullDate))}"
-                      data-date={fullDate}
-                      bind:this={fullDateRefs[`date-${fullDate}`]}
-                      tabindex={isDateVisible(fullDate) && isSameDate(focusedDate, fullDate)
-                        ? 0
-                        : -1}
-                      aria-label={isDateVisible(fullDate) ? getAriaLabelForDate(fullDate) : null}
-                      class:asd__day--enabled={dayNumber !== 0}
-                      class:asd__day--empty={dayNumber === 0}
-                      class:asd__day--disabled={isDisabled(fullDate)}
-                      class:asd__day--selected={fullDate &&
-                        (selectedDate1 === fullDate || selectedDate2 === fullDate)}
-                      class:asd__day--in-range={isInRange(fullDate)}
-                      class:asd__day--today={fullDate && isToday(fullDate)}
-                      class:asd__day--hovered={isHoveredInRange(fullDate)}
-                      class:asd__selected-date-one={fullDate && fullDate === selectedDate1}
-                      class:asd__selected-date-two={fullDate && fullDate === selectedDate2}
-                      data-roba={getRandom()}
-                      style={stylesToString(getDayStyles(fullDate, hoverDate))}
-                      on:mouseover={() => setHoverDate(fullDate)}
-                      on:focus={() => {}}
-                    >
-                      {#if dayNumber}
-                        <!-- FIXME: date={fullDate} -->
-                        <button
-                          class="asd__day-button"
-                          type="button"
-                          tabindex="-1"
-                          disabled={isDisabled(fullDate)}
-                          on:click={() => selectDate(fullDate)}>{dayNumber}</button
-                        >
-                      {/if}
-                    </td>
-                  {/each}
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      {/each}
-    </div>
-    {#if showShortcutsMenuTrigger}
-      <div
-        class="asd__keyboard-shortcuts-menu {showKeyboardShortcutsMenu
-          ? 'asd__keyboard-shortcuts-show'
-          : ''}"
-        style={stylesToString(keyboardShortcutsMenuStyles)}
-      >
-        <div class="asd__keyboard-shortcuts-title">{texts.keyboardShortcuts}</div>
+{#key showDatepicker}
+  <div
+    id={wrapperId}
+    class="asd__wrapper {classesToString(wrapperClasses)}"
+    class:hidden={!showDatepicker}
+    style={showFullscreen ? null : stylesToString(wrapperStyles)}
+    on:keyup={handleKeyboardInput}
+    on:keydown={trapKeyboardInput}
+    transition:fade={{ duration: 200 }}
+    use:clickOutside
+    on:click_outside={handleClickOutside}
+  >
+    {#if showFullscreen}
+      <div class="asd__mobile-header asd__mobile-only">
         <button
-          class="asd__keyboard-shortcuts-close"
-          bind:this={keyboardShortcusMenuClose}
-          tabindex="0"
-          on:click={closeKeyboardShortcutsMenu}
-          aria-label={ariaLabels.closeKeyboardShortcutsMenu}
+          type="button"
+          class="asd__mobile-close"
+          on:click={closeDatepicker}
+          aria-label={ariaLabels.closeDatepicker}
         >
-          {#if $$slots['close-shortcuts-icon']}
-            <slot name="close-shortcuts-icon" />
+          {#if $$slots['close-icon']}
+            <slot name="close-icon" />
           {:else}
             <div class="asd__mobile-close-icon" aria-hidden="true">X</div>
           {/if}
         </button>
-        <ul class="asd__keyboard-shortcuts-list">
-          {#each keyboardShortcuts as shortcut, i (i)}
-            <li>
-              <span class="asd__keyboard-shortcuts-symbol" aria-label={shortcut.symbolDescription}
-                >{shortcut.symbol}</span
-              >
-              {shortcut.label}
-            </li>
+        <h3>{mobileHeader || mobileHeaderFallback}</h3>
+      </div>
+    {/if}
+    <div class="asd__datepicker-header">
+      <div class="asd__change-month-button asd__change-month-button--previous">
+        <button
+          on:click={previousMonth}
+          type="button"
+          aria-label={ariaLabels.previousMonth}
+          class="center"
+        >
+          {#if $$slots['previous-month-icon']}
+            <slot name="previous-month-icon" />
+          {:else}
+            <svg viewBox="0 0 1000 1000">
+              <path
+                d="M336.2 274.5l-210.1 210h805.4c13 0 23 10 23 23s-10 23-23 23H126.1l210.1 210.1c11 11 11 21 0 32-5 5-10 7-16 7s-11-2-16-7l-249.1-249c-11-11-11-21 0-32l249.1-249.1c21-21.1 53 10.9 32 32z"
+              />
+            </svg>
+          {/if}
+        </button>
+      </div>
+      <div class="asd__change-month-button asd__change-month-button--next">
+        <button on:click={nextMonth} type="button" aria-label={ariaLabels.nextMonth} class="center">
+          {#if $$slots['next-month-icon']}
+            <slot name="next-month-icon" />
+          {:else}
+            <svg viewBox="0 0 1000 1000">
+              <path
+                d="M694.4 242.4l249.1 249.1c11 11 11 21 0 32L694.4 772.7c-5 5-10 7-16 7s-11-2-16-7c-11-11-11-21 0-32l210.1-210.1H67.1c-13 0-23-10-23-23s10-23 23-23h805.4L662.4 274.5c-21-21.1 11-53.1 32-32.1z"
+              />
+            </svg>
+          {/if}
+        </button>
+      </div>
+      {#each numberToArray(showMonths) as month, i (month)}
+        <div
+          class="asd__days-legend"
+          style="{stylesToString(monthWidthStyles)} {`left: ${width * i}px`}"
+        >
+          {#each daysShort as day, i (i)}
+            <div class="asd__day-title">{day}</div>
           {/each}
-        </ul>
+        </div>
+      {/each}
+    </div>
+    <div class="asd__inner-wrapper" style={stylesToString(innerStyles)}>
+      {#key moveMonths}
+        {#each months as month, monthIndex (month.firstDateOfMonth)}
+          <div
+            class="asd__month {monthIndex === 0 || monthIndex > showMonths
+              ? 'asd__month--hidden'
+              : ''}"
+            style={stylesToString(monthWidthStyles)}
+            in:fly={{ x: 300 * moveMonths }}
+          >
+            <div class="asd__month-name">
+              {#if showMonthYearSelect}
+                <!-- TODO: v-resize-select -->
+                <select
+                  bind:value={month.monthName}
+                  class="asd__month-year-select"
+                  tabindex={monthIndex === 0 || monthIndex > showMonths ? -1 : 0}
+                  on:change={(event) => updateMonth(monthIndex, month.year, event)}
+                >
+                  {#each monthNames as monthName, idx (`month-${monthIndex}-${monthName}`)}
+                    <!-- content here -->
+                    <option value={monthName} disabled={isMonthDisabled(+month.year, idx)}
+                      >{monthName}</option
+                    >
+                  {/each}
+                </select>
+              {:else}
+                <span>{month.monthName}</span>
+              {/if}
+              {#if showMonthYearSelect}
+                <select
+                  class="asd__month-year-select"
+                  tabindex={monthIndex === 0 || monthIndex > showMonths ? -1 : 0}
+                  bind:value={month.year}
+                  on:change={(event) => updateYear(monthIndex, month.monthNumber - 1, event)}
+                >
+                  {#if years.indexOf(month.year) === -1}
+                    <!-- TODO: :key="`month-${monthIndex}-${year}`" -->
+                    <option value={month.year} disabled={true}>{month.year}</option>
+                  {/if}
+                  {#each years as year (`month-${monthIndex}-${year}`)}
+                    <option value={year}>{year}</option>
+                  {/each}
+                </select>
+              {:else}
+                <span>{month.year}</span>
+              {/if}
+            </div>
+            <table class="asd__month-table" role="presentation">
+              <tbody>
+                {#each month.weeks as week, index (index)}
+                  <tr class="asd__week">
+                    {#each week as { fullDate, dayNumber }, index (`${index}_${dayNumber}`)}
+                      <td
+                        class="asd__day {classesToString(customizedDateClass(fullDate))}"
+                        data-date={fullDate}
+                        bind:this={fullDateRefs[`date-${fullDate}`]}
+                        tabindex={isDateVisible(fullDate) && isSameDate(focusedDate, fullDate)
+                          ? 0
+                          : -1}
+                        aria-label={isDateVisible(fullDate) ? getAriaLabelForDate(fullDate) : null}
+                        class:asd__day--enabled={dayNumber !== 0}
+                        class:asd__day--empty={dayNumber === 0}
+                        class:asd__day--disabled={isDisabled(fullDate)}
+                        class:asd__day--selected={fullDate &&
+                          (selectedDate1 === fullDate || selectedDate2 === fullDate)}
+                        class:asd__day--in-range={isInRange(fullDate)}
+                        class:asd__day--today={fullDate && isToday(fullDate)}
+                        class:asd__day--hovered={isHoveredInRange(fullDate)}
+                        class:asd__selected-date-one={fullDate && fullDate === selectedDate1}
+                        class:asd__selected-date-two={fullDate && fullDate === selectedDate2}
+                        data-roba={getRandom()}
+                        style={stylesToString(getDayStyles(fullDate, hoverDate, stylesUpdated))}
+                        on:mouseover={() => setHoverDate(fullDate)}
+                        on:focus={() => {}}
+                      >
+                        {#if dayNumber}
+                          <button
+                            class="asd__day-button"
+                            type="button"
+                            tabindex="-1"
+                            disabled={isDisabled(fullDate)}
+                            on:click={() => selectDate(fullDate)}>{dayNumber}</button
+                          >
+                        {/if}
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/each}
+      {/key}
+      {#if showShortcutsMenuTrigger}
+        <div
+          class="asd__keyboard-shortcuts-menu {showKeyboardShortcutsMenu
+            ? 'asd__keyboard-shortcuts-show'
+            : ''}"
+          style={stylesToString(keyboardShortcutsMenuStyles)}
+        >
+          <div class="asd__keyboard-shortcuts-title">{texts.keyboardShortcuts}</div>
+          <button
+            class="asd__keyboard-shortcuts-close"
+            bind:this={keyboardShortcusMenuClose}
+            tabindex="0"
+            on:click={closeKeyboardShortcutsMenu}
+            aria-label={ariaLabels.closeKeyboardShortcutsMenu}
+          >
+            {#if $$slots['close-shortcuts-icon']}
+              <slot name="close-shortcuts-icon" />
+            {:else}
+              <div class="asd__mobile-close-icon" aria-hidden="true">X</div>
+            {/if}
+          </button>
+          <ul class="asd__keyboard-shortcuts-list">
+            {#each keyboardShortcuts as shortcut, i (i)}
+              <li>
+                <span class="asd__keyboard-shortcuts-symbol" aria-label={shortcut.symbolDescription}
+                  >{shortcut.symbol}</span
+                >
+                {shortcut.label}
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    </div>
+    {#if mode !== 'single' && showActionButtons}
+      <div class="asd__action-buttons">
+        <button on:click={closeDatepickerCancel} type="button">{texts.cancel}</button>
+        <button id="applyButton" on:click={apply} style={`color: ${colors.selected}`} type="button"
+          >{texts.apply}</button
+        >
+      </div>
+    {/if}
+    {#if showShortcutsMenuTrigger}
+      <div class="asd__keyboard-shortcuts-trigger-wrapper">
+        <button
+          class="asd__keyboard-shortcuts-trigger"
+          aria-label={ariaLabels.openKeyboardShortcutsMenu}
+          tabindex="0"
+          on:click={openKeyboardShortcutsMenu}
+        >
+          <span>?</span>
+        </button>
       </div>
     {/if}
   </div>
-  {#if mode !== 'single' && showActionButtons}
-    <div class="asd__action-buttons">
-      <button on:click={closeDatepickerCancel} type="button">{texts.cancel}</button>
-      <button
-        bind:this={applyButton}
-        on:click={apply}
-        style={`color: ${colors.selected}`}
-        type="button">{texts.apply}</button
-      >
-    </div>
-  {/if}
-  {#if showShortcutsMenuTrigger}
-    <div class="asd__keyboard-shortcuts-trigger-wrapper">
-      <button
-        class="asd__keyboard-shortcuts-trigger"
-        aria-label={ariaLabels.openKeyboardShortcutsMenu}
-        tabindex="0"
-        on:click={openKeyboardShortcutsMenu}
-      >
-        <span>?</span>
-      </button>
-    </div>
-  {/if}
-</div>
+{/key}
 
 <style lang="scss" global>
   $tablet: 768px;
